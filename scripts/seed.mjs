@@ -89,7 +89,7 @@ async function fetchGame(seed) {
   url.searchParams.set('l', 'german');
   url.searchParams.set('cc', 'de');
   const response = await fetch(url, {
-    headers: { 'user-agent': 'cr1ms0n-games-seed/1.0' },
+    headers: { 'user-agent': 'gamequeue-seed/1.0' },
     signal: AbortSignal.timeout(15_000)
   });
   if (!response.ok) throw new Error(`Steam HTTP ${response.status}`);
@@ -155,7 +155,7 @@ async function upsert(seed, data) {
 
   await pool.query(`
     INSERT INTO submissions (game_id, user_id, username)
-    VALUES ($1, 'seed', 'cr1ms0n')
+    VALUES ($1, 'seed', 'Demo')
     ON CONFLICT (game_id, user_id) DO NOTHING
   `, [result.rows[0].id]);
 }

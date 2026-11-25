@@ -6,6 +6,9 @@ let ready: Promise<void> | undefined;
 export function ensureAccounts() {
   return ready ||= db.query(`
     CREATE TABLE IF NOT EXISTS app_settings (id BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id), registration TEXT NOT NULL DEFAULT 'invite' CHECK (registration IN ('open','invite','closed')));
+    ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS site_name TEXT NOT NULL DEFAULT 'GameQueue';
+    ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS site_icon BYTEA;
+    ALTER TABLE app_settings ADD COLUMN IF NOT EXISTS site_icon_hash TEXT;
     INSERT INTO app_settings(id) VALUES(TRUE) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS app_users (
       id SERIAL PRIMARY KEY, username TEXT NOT NULL, display_name TEXT NOT NULL,

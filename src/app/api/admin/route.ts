@@ -1,3 +1,5 @@
+import { normalizeSiteIcon, boundedJson } from '@/lib/site-icon';
+import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth';
@@ -6,6 +8,7 @@ import { authError, sameOrigin } from '@/lib/auth-http';
 import { randomToken, digest } from '@/lib/passwords';
 import { publicOrigin } from '@/lib/origins';
 const schema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('branding'), siteName: z.string().trim().min(1).max(64).regex(/^[^\u0000-\u001f\u007f]+$/), icon: z.string().max(699052).optional(), resetIcon: z.boolean().optional() }).refine(value => !(value.icon && value.resetIcon)),
   z.object({ action: z.literal('settings'), registration: z.enum(['open','invite','closed']) }),
   z.object({ action: z.literal('invite'), days: z.number().int().min(1).max(30) }),
   z.object({ action: z.literal('revoke'), hash: z.string().regex(/^[a-f0-9]{64}$/) }),
@@ -16,11 +19,16 @@ export async function POST(request: Request) {
     sameOrigin(request);
     const admin = await requireAdmin();
     if (!await authLimit('admin', String(admin.id), 100)) throw new Error('RATE_LIMIT');
-    const input = schema.parse(await request.json());
+    const input = schema.parse(await boundedJson(request));
+    const icon = input.action === 'branding' && input.icon ? await normalizeSiteIcon(input.icon) : null;
     return await transaction(async client => {
       // Recheck under the same lock as role updates to reject concurrent revocations.
       const actor = (await client.query('SELECT role,disabled FROM app_users WHERE id=$1', [admin.id])).rows[0];
       if (!actor || actor.disabled || actor.role !== 'ADMIN') throw new Error('FORBIDDEN');
+      if (input.action === 'branding') {
+        if (icon || input.resetIcon) await client.query('UPDATE app_settings SET site_name=$1,site_icon=$2,site_icon_hash=$3 WHERE id=TRUE', [input.siteName,icon,icon ? createHash('sha256').update(icon).digest('hex') : null]);
+        else await client.query('UPDATE app_settings SET site_name=$1 WHERE id=TRUE',[input.siteName]);
+      }
       if (input.action === 'settings') await client.query('UPDATE app_settings SET registration=$1 WHERE id=TRUE', [input.registration]);
       if (input.action === 'invite') {
         const token = randomToken();

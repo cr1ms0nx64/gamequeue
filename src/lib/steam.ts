@@ -108,7 +108,7 @@ export async function fetchSteamGame(appId: number): Promise<ImportedGame> {
   const response = await fetch(url, {
     headers: {
       accept: 'application/json',
-      'user-agent': 'crimson-games/1.1'
+      'user-agent': 'gamequeue/1.2'
     },
     cache: 'no-store',
     signal: AbortSignal.timeout(12_000)

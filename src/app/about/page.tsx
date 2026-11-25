@@ -18,7 +18,7 @@ export default function AboutPage() {
         </article>
         <article>
           <ShieldCheck />
-          <h2>Dein Games Konto</h2>
+          <h2>Dein Community Konto</h2>
           <p>Melde dich mit einem lokalen Konto oder über Steam an. Administratoren verwalten den Zugang und Einladungen direkt in Games.</p>
         </article>
         <article>

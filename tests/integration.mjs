@@ -37,6 +37,35 @@ try {
   const member = await request('/api/auth/register', { username: 'memberone', password: credentials.password, invite });
   await request('/api/auth/register', { username: 'membertwo', password: credentials.password, invite }, '', 400);
   await request('/api/admin', { action: 'settings', registration: 'open' }, member.cookie, 403);
+  // Branding is admin-only, persists in PostgreSQL and updates page metadata.
+  const {default: sharp} = await import('sharp');
+  await request('/api/admin',{action:'branding',siteName:'Community Lounge'},'',401);
+  await request('/api/admin',{action:'branding',siteName:'Community Lounge'},member.cookie,403);
+  await request('/api/admin',{action:'branding',siteName:'Community Lounge'},admin.cookie,403,'https://evil.test');
+  await request('/api/admin',{action:'branding',siteName:' '},admin.cookie,400);
+  const sourceIcon = await sharp({create:{width:64,height:32,channels:3,background:'#1199bb'}}).jpeg().toBuffer();
+  await request('/api/admin',{action:'branding',siteName:'Community Lounge',icon:sourceIcon.toString('base64')},admin.cookie);
+  const brand = (await query('SELECT site_name,site_icon,site_icon_hash FROM app_settings WHERE id=TRUE')).rows[0];
+  assert.equal(brand.site_name,'Community Lounge'); checks++;
+  assert.equal((await sharp(brand.site_icon).metadata()).width,512); checks++;
+  const iconResponse = await fetch(base + '/api/site-icon?v=' + brand.site_icon_hash);
+  assert.equal(iconResponse.headers.get('content-type'),'image/png'); checks++;
+  assert.ok(iconResponse.headers.get('cache-control').includes('immutable')); checks++;
+  assert.deepEqual(Buffer.from(await iconResponse.arrayBuffer()),brand.site_icon); checks++;
+  const homeHtml = await (await fetch(base+'/')).text();
+  assert.ok(homeHtml.includes('<title>Community Lounge</title>')); checks++;
+  assert.ok(homeHtml.includes('/api/site-icon?v='+brand.site_icon_hash)); checks++;
+  await request('/api/admin',{action:'branding',siteName:'Renamed Lounge'},admin.cookie);
+  assert.equal((await query('SELECT site_icon_hash FROM app_settings WHERE id=TRUE')).rows[0].site_icon_hash,brand.site_icon_hash); checks++;
+  await request('/api/admin',{action:'branding',siteName:'Bad icon',icon:Buffer.from('<svg></svg>').toString('base64')},admin.cookie,400);
+  await request('/api/admin',{action:'branding',siteName:'Too big',icon:'A'.repeat(800000)},admin.cookie,400);
+  assert.equal((await query('SELECT site_name FROM app_settings WHERE id=TRUE')).rows[0].site_name,'Renamed Lounge'); checks++;
+  await request('/api/admin',{action:'branding',siteName:'GameQueue',resetIcon:true},admin.cookie);
+  assert.equal((await query('SELECT site_icon FROM app_settings WHERE id=TRUE')).rows[0].site_icon,null); checks++;
+  const removedIcon = await fetch(base+'/api/site-icon?v='+brand.site_icon_hash,{redirect:'manual'});
+  assert.equal(removedIcon.status,307); checks++;
+  assert.equal(removedIcon.headers.get('cache-control'),'no-store'); checks++;
+
   await request('/api/auth/login', { username: credentials.username, password: 'incorrect-password' }, '', 401);
   const login = await request('/api/auth/login', credentials); assert.ok(login.cookie); checks++;
   await request('/api/auth/logout', {}, login.cookie);

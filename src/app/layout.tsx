@@ -1,20 +1,20 @@
+import { siteBranding } from '@/lib/branding';
 import type { Metadata, Viewport } from 'next';
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
 import './globals.css';
 import './platform-shell-v2.css';
 
-export const metadata: Metadata = {
-  title: {
-    default: 'cr1ms0n Games',
-    template: '%s · cr1ms0n Games'
-  },
-  description: 'Community Game Queue für gemeinsame Spielabende.',
-  icons: {
-    icon: '/assets/crimson-favicon.png',
-    apple: '/assets/crimson-icon.png'
-  }
-};
+export const dynamic = 'force-dynamic';
+
+export async function generateMetadata(): Promise<Metadata> {
+  const branding = await siteBranding();
+  return {
+    title: { default: branding.siteName, template: `%s · ${branding.siteName}` },
+    description: 'Community Game Queue für gemeinsame Spielabende.',
+    icons: { icon: branding.iconUrl, apple: branding.iconUrl }
+  };
+}
 
 export const viewport: Viewport = {
   colorScheme: 'dark',

@@ -7,11 +7,12 @@ import {
   ArrowRight, Crown, Gamepad2, House, Info, LogIn, LogOut, Plus,
   Search, UserRound, X
 } from 'lucide-react';
+import type { SiteBranding } from '@/lib/branding';
 import type { GamesUser } from '@/lib/types';
 import { initials } from '@/lib/format';
 
 
-export function HeaderClient({ user }: { user: GamesUser | null }) {
+export function HeaderClient({ user, branding }: { user: GamesUser | null; branding: SiteBranding }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
@@ -74,13 +75,13 @@ export function HeaderClient({ user }: { user: GamesUser | null }) {
   return (
     <>
       <header data-platform-mobile-header className="games-mobile-header">
-        <Link className="games-brand games-brand--compact" href="/" aria-label="cr1ms0n Games Startseite">
+        <Link className="games-brand games-brand--compact" href="/" aria-label={`${branding.siteName} Startseite`}>
           <span className="games-brand-icon">
-            <img src="/assets/crimson-icon.png" alt="" />
+            <img src={branding.iconUrl} alt="" />
           </span>
           <span className="games-brand-copy">
-            <img className="games-brand-wordmark" src="/assets/crimson-wordmark.png" alt="cr1ms0n" />
-            <small>Games</small>
+            <span className="site-name">{branding.siteName}</span>
+            <small>Community</small>
           </span>
         </Link>
         <div className="games-mobile-actions">
@@ -111,13 +112,13 @@ export function HeaderClient({ user }: { user: GamesUser | null }) {
 
       <aside data-platform-sidebar ref={sidebarRef} id="games-navigation" inert={mobile && !menuOpen} aria-label="Seitennavigation" className={`games-sidebar ${menuOpen ? 'is-open' : ''}`}>
         <div data-platform-brand className="games-sidebar-brand">
-          <Link className="games-brand" href="/" aria-label="cr1ms0n Games Startseite">
+          <Link className="games-brand" href="/" aria-label={`${branding.siteName} Startseite`}>
             <span className="games-brand-icon">
-              <img src="/assets/crimson-icon.png" alt="" />
+              <img src={branding.iconUrl} alt="" />
             </span>
             <span className="games-brand-copy">
-              <img className="games-brand-wordmark" src="/assets/crimson-wordmark.png" alt="cr1ms0n" />
-              <small>Games</small>
+              <span className="site-name">{branding.siteName}</span>
+              <small>Community</small>
             </span>
           </Link>
           <button
@@ -154,7 +155,7 @@ export function HeaderClient({ user }: { user: GamesUser | null }) {
               </Link>
               <Link className={`games-nav-item ${pathname.startsWith('/about') ? 'is-active' : ''}`} href="/about">
                 <span className="games-nav-icon"><Info /></span>
-                <span>Über Games</span>
+                <span>Über die Community</span>
               </Link>
             </div>
           </section>
@@ -197,7 +198,7 @@ export function HeaderClient({ user }: { user: GamesUser | null }) {
               <span className="games-user-avatar"><LogIn /></span>
               <span className="games-user-copy">
                 <strong>Anmelden</strong>
-                <small>Games Konto verwenden</small>
+                <small>Community Konto verwenden</small>
               </span>
             </Link>
           )}

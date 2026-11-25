@@ -19,3 +19,7 @@ Use a dedicated database and database account. PUBLIC_ORIGIN must exactly match 
 Never publish .env.local, production databases, session tokens, invite URLs or Hub credentials. The repository includes no automatic migration of Hub identities. Standalone game participation IDs use a local: prefix, isolating them from historical numeric Hub IDs. Existing games participation must be deliberately mapped to retain ownership.
 
 No password recovery email or local MFA is implemented. Maintain access to an administrator account. Steam-only accounts authenticate through Steam and cannot set a local password through the profile page.
+
+## Site identity settings
+
+Only administrators can change the site name or icon. Icon uploads are limited to 512 KB and 16 million input pixels, validated as PNG, JPEG or WebP, and re-encoded as a single 512 × 512 PNG. SVG and animated input are not accepted. The request body is bounded before JSON parsing. Uploaded metadata is not retained. Icon bytes and their hash live in the existing PostgreSQL settings record. Public icon URLs contain only a content hash.

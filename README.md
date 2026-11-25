@@ -1,11 +1,11 @@
 <p align="center">
-  <img src="public/assets/crimson-icon.png" width="72" alt="cr1ms0n Games logo">
+  <img src="public/icon.png" width="72" alt="GameQueue logo">
 </p>
-<h1 align="center">cr1ms0n Games</h1>
+<h1 align="center">GameQueue</h1>
 <p align="center"><strong>Your community. Your next game.</strong></p>
 <p align="center">A self-hosted game queue for discovering, suggesting and choosing what to play together.</p>
 <p align="center">
-  <img src="https://img.shields.io/badge/release-1.1.0-00c2e0" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/release-1.2.0-00c2e0" alt="Version 1.2.0">
   <img src="https://img.shields.io/badge/Next.js-16-111111?logo=nextdotjs" alt="Next.js 16">
   <img src="https://img.shields.io/badge/PostgreSQL-17%2B-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-24b47e" alt="MIT license"></a>
@@ -28,14 +28,15 @@
 | Planned, playing, played and rejected statuses | Expiring, single-use invitation links |
 | Admin scores and a Community Choice view | User roles, account blocking and session revocation |
 | Responsive navigation and dark interface | Docker Compose and GitHub Actions CI |
+| Neutral GameQueue defaults | Admin-editable site name and site icon |
 
 ## Quick start
 
 Requirements: Docker with Compose and Node.js 24 or newer for the configuration helper. The container stack runs the app and PostgreSQL together.
 
 ```sh
-git clone https://github.com/cr1ms0nx64/crimson-games.git
-cd crimson-games
+git clone https://github.com/cr1ms0nx64/gamequeue.git
+cd gamequeue
 npm run setup:env
 ```
 
@@ -80,6 +81,12 @@ The first administrator is created locally through `/setup`. Subsequent accounts
 In **Administration**, create a link and share it with the intended member. Each invitation is valid for seven days, can be redeemed once and can be revoked. The full invitation link is shown only when it is created. Invalid or expired invitations are rejected, including during Steam registration.
 
 ![User and invitation administration](docs/screenshots/admin.jpg)
+
+### Site name and icon
+
+Open **Administration → Name und Seitenicon** to customize the name and icon for your installation. Upload a PNG, JPEG or WebP up to 512 KB. Images are validated and converted to a 512 × 512 PNG, with transparent padding to preserve their proportions. The result is stored in PostgreSQL and used in navigation, browser tabs and bookmarks. Changes survive restarts and container replacements without a separate upload volume.
+
+Use **Standardicon verwenden** and save to restore the neutral default icon. The site name updates the header, footer and page titles. Only administrators can save these settings. Existing installations gain the required settings columns automatically.
 
 ### Steam sign-in
 
@@ -160,10 +167,10 @@ The integration suite requires a running app and a fresh disposable database. Se
 ### Validation for this release
 
 * Type checking and production standalone build passed.
-* Four security tests passed, covering password verification, local redirects, Steam assertions and provider verification failure handling.
-* 56 integration checks passed against a disposable PostgreSQL database, covering setup races, registration policies, invitation reuse/expiry/revocation, access control, session revocation, rate limits, votes and comments.
+* Five security tests passed, covering password verification, local redirects, Steam assertions, provider verification failure handling and icon upload validation.
+* 77 integration checks passed against a disposable PostgreSQL database, covering setup races, registration policies, invitation reuse/expiry/revocation, access control, session revocation, rate limits, votes, comments and persistent site identity settings.
 * README screenshots use server-rendered application pages with synthetic community data. The static screenshot copy is not an interactive browser test of the full app.
-* A full sign-in with a real Steam account and a Docker image build were not run in the preparation environment. CI is included for verification after publication; no GitHub Actions result is claimed here.
+* A full sign-in with a real Steam account and a Docker image build were not run in the preparation environment. GitHub Actions runs the same automated checks for each push.
 
 ## Existing Hub installation
 
@@ -178,6 +185,6 @@ If you want to retain old submissions, votes and comments, plan an explicit acco
 * [Security model](SECURITY.md)
 * [Contributing](CONTRIBUTING.md)
 
-Extracted from `cr1ms0n-suite/games-app`. Copyright © 2026 Justin Hofmann. Source code is available under the [MIT License](LICENSE). Steam and game artwork belong to their respective owners; the code license does not grant rights to third-party artwork.
+Source code is available under the [MIT License](LICENSE). Steam and game artwork belong to their respective owners; the code license does not grant rights to third-party artwork.
 
 Steam authentication references: [Steamworks authentication documentation](https://partner.steamgames.com/doc/features/auth) and [OpenID Authentication 2.0](https://openid.net/specs/openid-authentication-2_0.html).

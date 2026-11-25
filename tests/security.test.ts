@@ -45,3 +45,20 @@ test('Steam signature is verified at the fixed HTTPS provider and fails closed',
     await assert.rejects(verifySteamAssertion(assertion()));
   } finally { globalThis.fetch = original; }
 });
+
+
+test('site icon upload normalizes raster images and rejects active or oversized input', async () => {
+  const { default: sharp } = await import('sharp');
+  const { normalizeSiteIcon, MAX_ICON_BYTES, boundedJson } = await import('../src/lib/site-icon');
+  for (const format of ['png','jpeg','webp'] as const) {
+    const source = await sharp({create:{width:96,height:48,channels:3,background:'#35b4ac'}})[format]().toBuffer();
+    const icon = await normalizeSiteIcon(source.toString('base64'));
+    const metadata = await sharp(icon).metadata();
+    assert.equal(metadata.format,'png'); assert.equal(metadata.width,512); assert.equal(metadata.height,512);
+  }
+  for (const invalid of ['not-base64',Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64'),Buffer.alloc(MAX_ICON_BYTES+1).toString('base64'),Buffer.from('not a real image').toString('base64')]) await assert.rejects(normalizeSiteIcon(invalid));
+  const huge = await sharp({create:{width:4001,height:4001,channels:3,background:'#fff'}}).png().toBuffer();
+  await assert.rejects(normalizeSiteIcon(huge.toString('base64')));
+  await assert.rejects(boundedJson(new Request('http://localhost',{method:'POST',body:'x'.repeat(800000)})));
+  assert.deepEqual(await boundedJson(new Request('http://localhost',{method:'POST',body:JSON.stringify({action:'branding'})})),{action:'branding'});
+});
