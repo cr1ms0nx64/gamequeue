@@ -9,8 +9,8 @@ if (!base || !origin || !setupToken || !process.env.DATABASE_URL || !process.env
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const query = (sql, args) => pool.query(sql, args);
 let checks = 0;
-async function request(path, data, cookie = '', expected = 200, requestOrigin = origin) {
-  const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', origin: requestOrigin, cookie }, body: JSON.stringify(data), redirect: 'manual' });
+async function request(path, data, cookie = '', expected = 200, requestOrigin = origin, ip = '198.51.100.9') {
+  const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', origin: requestOrigin, cookie, 'x-forwarded-for': ip }, body: JSON.stringify(data), redirect: 'manual' });
   const result = await response.json();
   assert.equal(response.status, expected, `${path}: ${JSON.stringify(result)}`); checks++;
   return { ...result, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
@@ -114,5 +114,20 @@ try {
   await query("DELETE FROM app_auth_limits WHERE key IS NOT NULL");
   for (let i=0; i<10; i++) await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 401);
   await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 429);
+  // Login failures from one client must not lock out another client.
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<10; i++) await request('/api/auth/login', {username: credentials.username, password:'wrong'}, '', 401, origin, '198.51.100.1');
+  await request('/api/auth/login', credentials, '', 200, origin, '198.51.100.2');
+  // Rightmost proxy address wins; a forged left entry cannot change the bucket.
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<10; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401, origin, '203.0.113.'+(i+1)+', 198.51.100.3');
+  await request('/api/auth/login', credentials, '', 429, origin, '203.0.113.99, 198.51.100.3');
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<9; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401);
+  await request('/api/auth/login', credentials);
+  assert.equal((await query('SELECT COUNT(*)::int AS n FROM app_auth_limits')).rows[0].n,0); checks++;
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<50; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401, origin, '192.0.2.'+(i+1));
+  await request('/api/auth/login', credentials, '', 429, origin, '192.0.2.100');
   console.log(`Passed ${checks} integration checks against a disposable PostgreSQL database.`);
 } finally { await pool.end(); }

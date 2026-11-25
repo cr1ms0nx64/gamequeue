@@ -75,13 +75,34 @@ export async function newSession(userId: number): Promise<string> {
   await db.query(`INSERT INTO app_sessions(token_hash,user_id,expires_at) VALUES($1,$2,NOW()+INTERVAL '14 days')`, [digest(token), userId]);
   return token;
 }
-// Database-backed limits work across workers and restarts. Configure a trusted proxy before trusting forwarded IPs.
-export async function authLimit(scope: string, identity: string, maximum = 10): Promise<boolean> {
+// Database-backed limits work across workers and restarts.
+export const LOGIN_PAIR_LIMIT = 10;
+export const LOGIN_USERNAME_LIMIT = 50;
+export const LOGIN_IP_LIMIT = 60;
+export const AUTH_WINDOW_SECONDS = 15 * 60;
+let nextCleanup = 0;
+async function cleanupLimits() {
+  if (Date.now() < nextCleanup) return;
+  nextCleanup = Date.now() + 60_000;
+  try { await db.query('DELETE FROM app_auth_limits WHERE expires_at<NOW()'); }
+  catch (error) { nextCleanup = 0; throw error; }
+}
+export async function checkLimit(scope: string, identity: string, maximum = 10): Promise<boolean> {
   await ensureAccounts();
-  const key = digest(`${scope}:${identity}`);
-  const result = await db.query(`INSERT INTO app_auth_limits(key,attempts,expires_at) VALUES($1,1,NOW()+INTERVAL '15 minutes')
-    ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN app_auth_limits.expires_at<NOW() THEN 1 ELSE app_auth_limits.attempts+1 END,
-    expires_at=CASE WHEN app_auth_limits.expires_at<NOW() THEN NOW()+INTERVAL '15 minutes' ELSE app_auth_limits.expires_at END RETURNING attempts`, [key]);
-  await db.query('DELETE FROM app_auth_limits WHERE expires_at<NOW()');
-  return result.rows[0].attempts <= maximum;
+  const row = (await db.query('SELECT attempts FROM app_auth_limits WHERE key=$1 AND expires_at>NOW()', [digest(`${scope}:${identity}`)])).rows[0];
+  return !row || row.attempts < maximum;
+}
+export async function recordFailure(scope: string, identity: string, windowSeconds = AUTH_WINDOW_SECONDS): Promise<number> {
+  await ensureAccounts();
+  const result = await db.query(`INSERT INTO app_auth_limits(key,attempts,expires_at) VALUES($1,1,NOW()+($2 * INTERVAL '1 second'))
+    ON CONFLICT(key) DO UPDATE SET attempts=CASE WHEN app_auth_limits.expires_at<=NOW() THEN 1 ELSE app_auth_limits.attempts+1 END,
+    expires_at=CASE WHEN app_auth_limits.expires_at<=NOW() THEN NOW()+($2 * INTERVAL '1 second') ELSE app_auth_limits.expires_at END RETURNING attempts`, [digest(`${scope}:${identity}`), windowSeconds]);
+  await cleanupLimits();
+  return Number(result.rows[0].attempts);
+}
+export async function resetLimit(scope: string, identity: string) {
+  await db.query('DELETE FROM app_auth_limits WHERE key=$1', [digest(`${scope}:${identity}`)]);
+}
+export async function authLimit(scope: string, identity: string, maximum = 10, windowSeconds = AUTH_WINDOW_SECONDS): Promise<boolean> {
+  return await recordFailure(scope, identity, windowSeconds) <= maximum;
 }

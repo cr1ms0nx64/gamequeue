@@ -5,9 +5,7 @@ import { publicOrigin } from '@/lib/origins';
 export function sameOrigin(request: Request) {
   if (request.headers.get('origin') !== publicOrigin()) throw new Error('FORBIDDEN');
 }
-export function clientKey(request: Request): string {
-  return process.env.TRUST_PROXY === 'true' ? request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown' : 'shared';
-}
+export { clientKey } from '@/lib/proxy';
 export const cookieOptions = () => ({ httpOnly: true, secure: publicOrigin().startsWith('https:'), sameSite: 'lax' as const, path: '/' });
 export async function sessionResponse(userId: number, response: NextResponse = NextResponse.json({ ok: true })) {
   response.cookies.set(SESSION_COOKIE, await newSession(userId), { ...cookieOptions(), maxAge: 14 * 86400 });
