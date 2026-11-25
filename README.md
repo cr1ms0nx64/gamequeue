@@ -1,0 +1,183 @@
+<p align="center">
+  <img src="public/assets/crimson-icon.png" width="72" alt="cr1ms0n Games logo">
+</p>
+<h1 align="center">cr1ms0n Games</h1>
+<p align="center"><strong>Your community. Your next game.</strong></p>
+<p align="center">A self-hosted game queue for discovering, suggesting and choosing what to play together.</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/release-1.1.0-00c2e0" alt="Version 1.1.0">
+  <img src="https://img.shields.io/badge/Next.js-16-111111?logo=nextdotjs" alt="Next.js 16">
+  <img src="https://img.shields.io/badge/PostgreSQL-17%2B-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17 or newer">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-24b47e" alt="MIT license"></a>
+</p>
+
+![Community game queue](docs/screenshots/overview.jpg)
+
+**Standalone by design.** Games runs on its own database and accounts. No Hub, ACP, shared cookies or central authentication service is required. The interface is currently in German.
+
+[Features](#features) · [Quick start](#quick-start) · [Accounts and access](#accounts-and-access) · [Configuration](#configuration) · [Development](#development)
+
+## Features
+
+| Discover and decide | Run your community |
+| --- | --- |
+| Import games from Steam links or app IDs | One-time administrator setup |
+| Covers, descriptions, screenshots and release information | Local username/password accounts |
+| Community voting and comments | Optional Steam OpenID sign-in |
+| Search, filters, sorting and pagination | Open, invite-only or closed registration |
+| Planned, playing, played and rejected statuses | Expiring, single-use invitation links |
+| Admin scores and a Community Choice view | User roles, account blocking and session revocation |
+| Responsive navigation and dark interface | Docker Compose and GitHub Actions CI |
+
+## Quick start
+
+Requirements: Docker with Compose and Node.js 24 or newer for the configuration helper. The container stack runs the app and PostgreSQL together.
+
+```sh
+git clone https://github.com/cr1ms0nx64/crimson-games.git
+cd crimson-games
+npm run setup:env
+```
+
+The helper creates `.env.local` with random database credentials and a setup token. It refuses to overwrite an existing configuration.
+
+1. Set `PUBLIC_ORIGIN` in `.env.local` to the exact origin visitors will use. Keep `http://localhost:3000` for local evaluation; use an HTTPS origin for a public installation.
+2. Start the stack:
+
+   ```sh
+   docker compose --env-file .env.local up -d --build
+   ```
+
+3. Open your configured origin and complete `/setup`. Enter `SETUP_TOKEN` from `.env.local`, choose an administrator username and create a password of at least 12 characters.
+4. Open **Administration** to create invitations or change the registration policy.
+5. Remove `SETUP_TOKEN` from `.env.local` after setup, then recreate the app container:
+
+   ```sh
+   docker compose --env-file .env.local up -d --force-recreate app
+   ```
+
+The app binds to `127.0.0.1:3000`; PostgreSQL is available only inside the Compose network. Put a reverse proxy in front for public access. Data persists in the `postgres_data` volume. Use a fresh database for this standalone edition.
+
+<details>
+<summary><strong>Administrator setup</strong></summary>
+
+![First administrator setup](docs/screenshots/setup.jpg)
+
+The setup endpoint is locked after the first account has been created. Concurrent setup requests cannot create additional administrators.
+
+</details>
+
+## Accounts and access
+
+The first administrator is created locally through `/setup`. Subsequent accounts are ordinary users unless an administrator promotes them.
+
+| Registration mode | New local accounts | New Steam accounts | Existing accounts |
+| --- | --- | --- | --- |
+| Invite only, default | Valid invitation required | Valid invitation required | Can sign in |
+| Open | Can register | Created on first verified sign-in | Can sign in |
+| Closed | Cannot register | Cannot register | Can sign in |
+
+In **Administration**, create a link and share it with the intended member. Each invitation is valid for seven days, can be redeemed once and can be revoked. The full invitation link is shown only when it is created. Invalid or expired invitations are rejected, including during Steam registration.
+
+![User and invitation administration](docs/screenshots/admin.jpg)
+
+### Steam sign-in
+
+Set `STEAM_AUTH_ENABLED=true` to show the Steam option. Authentication happens on Steam's own website through OpenID; this app never receives Steam passwords. Basic sign-in does not require a Steam Web API key.
+
+Configure a reachable HTTPS `PUBLIC_ORIGIN` before using Steam in production. The callback is `/api/auth/steam/callback`. Steam accounts receive an automatically generated username and can change their display name under **Mein Konto**. They are not automatically linked to local accounts with matching names.
+
+Steam-only accounts continue authenticating through Steam. Local accounts can change their password from **Mein Konto**, which ends all existing sessions. Email password recovery and local MFA are not included in this release.
+
+## Configuration
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Dedicated PostgreSQL connection string; Compose supplies the internal database address |
+| `DB_PASSWORD` | PostgreSQL password used by Compose; generated by the setup helper |
+| `PUBLIC_ORIGIN` | Exact external origin, including scheme and port where applicable, without a path |
+| `SETUP_TOKEN` | Required for first administrator creation; remove after setup |
+| `STEAM_AUTH_ENABLED` | `true` enables Steam OpenID sign-in |
+| `TRUST_PROXY` | `false` by default; enable only behind a trusted proxy that overwrites forwarded client IP headers |
+| `IMPRINT_URL` | Optional URL for your installation's legal notice |
+| `PRIVACY_URL` | Optional URL for your installation's privacy policy |
+
+Keep `.env.local` private. Do not reuse Hub secrets. With `TRUST_PROXY=false`, unauthenticated rate limits share one client bucket; configure a trusted proxy before enabling forwarded IP handling.
+
+### Example reverse proxy
+
+Replace the domain and TLS paths with your own. The proxy must overwrite `X-Forwarded-For`, and clients must not be able to bypass it.
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name games.example.com;
+    ssl_certificate /path/to/fullchain.pem;
+    ssl_certificate_key /path/to/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $remote_addr;
+    }
+}
+```
+
+Set `PUBLIC_ORIGIN=https://games.example.com`. Add your normal HTTP to HTTPS redirect. After changing runtime variables, recreate the app container.
+
+### Native Node.js deployment
+
+Provide PostgreSQL 17 or newer, configure `.env.local` for that database, then:
+
+```sh
+npm ci
+npm run build
+npm start
+```
+
+The build prepares Next.js standalone output, including public files and static assets. Set `HOSTNAME=127.0.0.1` and `PORT=3000` in your service environment when binding behind a local proxy. The app initializes its schemas automatically.
+
+`GET /api/health` returns HTTP 200 when the games database is available and HTTP 503 when it is unavailable.
+
+## Development
+
+```sh
+npm ci
+npm run setup:env
+# Configure DATABASE_URL for your local PostgreSQL instance.
+npm run dev
+```
+
+```sh
+npm test
+npm run typecheck
+npm run build
+```
+
+The integration suite requires a running app and a fresh disposable database. See [CONTRIBUTING.md](CONTRIBUTING.md). GitHub Actions provisions PostgreSQL 17 and runs the security tests, type checking, build and integration suite.
+
+### Validation for this release
+
+* Type checking and production standalone build passed.
+* Four security tests passed, covering password verification, local redirects, Steam assertions and provider verification failure handling.
+* 56 integration checks passed against a disposable PostgreSQL database, covering setup races, registration policies, invitation reuse/expiry/revocation, access control, session revocation, rate limits, votes and comments.
+* README screenshots use server-rendered application pages with synthetic community data. The static screenshot copy is not an interactive browser test of the full app.
+* A full sign-in with a real Steam account and a Docker image build were not run in the preparation environment. CI is included for verification after publication; no GitHub Actions result is claimed here.
+
+## Existing Hub installation
+
+This repository contains a separate application. It does not change your running Hub or an existing Games deployment. Historical Hub identities are not automatically migrated. Standalone participation IDs have a `local:` prefix to prevent collisions with old numeric Hub user IDs.
+
+If you want to retain old submissions, votes and comments, plan an explicit account mapping before moving data. See [Architecture](docs/ARCHITECTURE.md) and [Security](SECURITY.md).
+
+## Project
+
+* [Changelog](CHANGELOG.md)
+* [Architecture and provenance](docs/ARCHITECTURE.md)
+* [Security model](SECURITY.md)
+* [Contributing](CONTRIBUTING.md)
+
+Extracted from `cr1ms0n-suite/games-app`. Copyright © 2026 Justin Hofmann. Source code is available under the [MIT License](LICENSE). Steam and game artwork belong to their respective owners; the code license does not grant rights to third-party artwork.
+
+Steam authentication references: [Steamworks authentication documentation](https://partner.steamgames.com/doc/features/auth) and [OpenID Authentication 2.0](https://openid.net/specs/openid-authentication-2_0.html).
