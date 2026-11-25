@@ -1,3 +1,5 @@
+import { AppError } from '@/lib/errors';
+import { assertNameAvailable } from '@/lib/names';
 import { toResponse } from '@/lib/errors';
 import { forbidden } from '@/lib/errors';
 import { cookies } from 'next/headers';
@@ -28,7 +30,14 @@ export async function GET(request: Request) {
       }
       await admit(client, pending.rows[0].invite, true);
       // SteamID is the identity; a matching display name never links an existing local account.
-      const row = (await client.query(`INSERT INTO app_users(username,display_name,steam_id) VALUES($1,$2,$3) RETURNING id`, [`steam_${steamId}`, `Steam ${steamId.slice(-6)}`, steamId])).rows[0];
+      const username=`steam_${steamId}`;
+      let displayName=`Steam ${steamId.slice(-6)}`;
+      await assertNameAvailable(client,username,'USER');
+      for(let suffix=1;;suffix++) {
+        try { await assertNameAvailable(client,displayName,'USER'); break; }
+        catch(error) { if(!(error instanceof AppError) || error.code!=='CONFLICT')throw error; displayName=`Steam ${steamId} (${suffix})`; }
+      }
+      const row = (await client.query(`INSERT INTO app_users(username,display_name,steam_id) VALUES($1,$2,$3) RETURNING id`, [username, displayName, steamId])).rows[0];
       return Number(row.id);
     });
     const response = await sessionResponse(id, NextResponse.redirect(`${publicOrigin()}/`));

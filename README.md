@@ -207,3 +207,7 @@ docker compose exec app node scripts/reset-admin.mjs benutzername
 ```
 
 `DATABASE_URL` und `PUBLIC_ORIGIN` müssen gesetzt sein. Der ausgegebene Link ist ein Geheimnis und gehört nicht in öffentliche Logs.
+
+## Steam-Metadaten aktualisieren
+
+Admins können Daten auf der Spielseite erneut von Steam laden. Status, Bewertungen und Vorschläge bleiben dabei erhalten. Für Cron steht `npm run refresh-steam` zur Verfügung. Alle Spiele werden nacheinander aktualisiert; zwischen Anfragen liegen standardmäßig 1500 ms (`STEAM_REFRESH_DELAY_MS`, mindestens 1000). Der Webserver startet keinen Hintergrundprozess. Für dieses Skript gilt ebenfalls Node.js 24 und eine gesetzte `DATABASE_URL`.

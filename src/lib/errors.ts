@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 export class AppError extends Error {
-  constructor(public code: string, public status: number, public publicMessage: string) {
-    super(publicMessage); this.name = 'AppError';
+  code:string;status:number;publicMessage:string;
+  constructor(code:string,status:number,publicMessage:string) {
+    super(publicMessage); this.name = 'AppError';this.code=code;this.status=status;this.publicMessage=publicMessage;
   }
 }
 export const unauthenticated = () => new AppError('UNAUTHENTICATED', 401, 'Bitte zuerst anmelden.');

@@ -84,6 +84,7 @@ export function CommentsPanel({
   user: GamesUser | null;
 }) {
   const [comments, setComments] = useState(initialComments);
+  const [cursor,setCursor]=useState(initialComments.length===25?initialComments.at(-1)?.cursor:null);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -108,6 +109,18 @@ export function CommentsPanel({
     } finally {
       setBusy(false);
     }
+  }
+
+  async function removeComment(comment:GameComment) {
+    if(!window.confirm('Diesen Kommentar wirklich löschen?'))return;
+    setBusy(true);setError('');
+    try {const response=await fetch(`/api/games/${gameId}/comments/${comment.id}`,{method:'DELETE'});const payload=await response.json();if(!response.ok)throw new Error(payload.error);setComments(items=>items.filter(item=>item.id!==comment.id));}
+    catch(error){setError(error instanceof Error?error.message:'Löschen fehlgeschlagen.');}finally{setBusy(false);}
+  }
+  async function loadMore() {
+    if(!cursor)return;setBusy(true);setError('');
+    try{const response=await fetch(`/api/games/${gameId}/comments?cursor=${encodeURIComponent(cursor)}`);const payload=await response.json();if(!response.ok)throw new Error(payload.error);setComments(items=>[...items,...payload.comments.filter((next:GameComment)=>!items.some(item=>item.id===next.id))]);setCursor(payload.nextCursor);}
+    catch(error){setError(error instanceof Error?error.message:'Kommentare konnten nicht geladen werden.');}finally{setBusy(false);}
   }
 
   return (
@@ -150,13 +163,14 @@ export function CommentsPanel({
       )}
       {error ? <p className="notice notice-error">{error}</p> : null}
 
+      {cursor && <button type="button" className="button button-secondary" disabled={busy} onClick={loadMore}>Weitere Kommentare laden</button>}
       <div className="comment-list">
         {comments.length ? comments.map((comment) => (
           <article className="comment" key={comment.id}>
             <span className="user-avatar">{initials(comment.username)}</span>
             <div>
               <header><strong>{comment.username}</strong><time>{relativeDate(comment.createdAt)}</time></header>
-              <p>{comment.body}</p>
+              <p>{comment.body}</p>{user && (user.role==='ADMIN'||user.id===comment.userId) && <button type="button" disabled={busy} onClick={()=>removeComment(comment)}>Löschen</button>}
             </div>
           </article>
         )) : (

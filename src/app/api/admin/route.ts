@@ -1,3 +1,4 @@
+import { assertNameAvailable, validName } from '@/lib/names';
 import { createPasswordReset } from '@/lib/auth/password-resets';
 import { forbidden, rateLimited, validation } from '@/lib/errors';
 import { normalizeSiteIcon, boundedJson } from '@/lib/site-icon';
@@ -23,10 +24,11 @@ export async function POST(request: Request) {
     const admin = await requireAdmin();
     if (!await authLimit('admin', String(admin.id), 100)) throw rateLimited();
     const input = schema.parse(await boundedJson(request));
+    if(input.action==='branding' && !validName(input.siteName))throw validation('Bitte einen gültigen Seitennamen ohne Steuerzeichen eingeben.');
     const icon = input.action === 'branding' && input.icon ? await normalizeSiteIcon(input.icon) : null;
     return await transaction(async client => {
       // Recheck under the same lock as role updates to reject concurrent revocations.
-      const actor = (await client.query('SELECT role,disabled FROM app_users WHERE id=$1', [admin.id])).rows[0];
+      const actor = (await client.query('SELECT role,disabled,display_name FROM app_users WHERE id=$1', [admin.id])).rows[0];
       if (!actor || actor.disabled || actor.role !== 'ADMIN') throw forbidden();
       if (input.action === 'reset') return NextResponse.json({ok:true,resetUrl:await createPasswordReset(client,input.id,admin.id)});
       if (input.action === 'branding') {
@@ -41,12 +43,13 @@ export async function POST(request: Request) {
       }
       if (input.action === 'revoke') await client.query('UPDATE app_invites SET revoked=TRUE WHERE token_hash=$1', [input.hash]);
       if (input.action === 'user') {
-        const target = (await client.query('SELECT role,disabled FROM app_users WHERE id=$1', [input.id])).rows[0];
+        const target = (await client.query('SELECT role,disabled,display_name FROM app_users WHERE id=$1', [input.id])).rows[0];
         if (!target) throw forbidden();
         if (target.role === 'ADMIN' && !target.disabled && (input.role !== 'ADMIN' || input.disabled)) {
           const count = (await client.query("SELECT COUNT(*)::int AS count FROM app_users WHERE role='ADMIN' AND NOT disabled")).rows[0].count;
           if (count <= 1) throw validation('Der letzte aktive Admin muss erhalten bleiben.');
         }
+        await assertNameAvailable(client,target.display_name,input.role,input.id);
         await client.query('UPDATE app_users SET role=$2,disabled=$3 WHERE id=$1', [input.id, input.role, input.disabled]);
         await client.query('DELETE FROM app_sessions WHERE user_id=$1', [input.id]);
       }

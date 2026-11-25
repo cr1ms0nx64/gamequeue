@@ -1,3 +1,4 @@
+import { assertNameAvailable } from '@/lib/names';
 import { validation } from '@/lib/errors';
 import { db } from '@/lib/db';
 import type { PoolClient } from 'pg';
@@ -67,6 +68,7 @@ export async function createLocalUser(input: { username: string; password: strin
       if (!exists) throw validation('Bitte zuerst das Setup abschließen.');
       await admit(client, input.invite || '');
     }
+    await assertNameAvailable(client,input.username,input.setup ? 'ADMIN' : 'USER');
     const result = await client.query(`INSERT INTO app_users(username,display_name,password_hash,role) VALUES($1,$1,$2,$3) RETURNING *`, [input.username, passwordHash, input.setup ? 'ADMIN' : 'USER']);
     return asUser(result.rows[0]);
   });
@@ -82,12 +84,12 @@ export const LOGIN_PAIR_LIMIT = 10;
 export const LOGIN_USERNAME_LIMIT = 50;
 export const LOGIN_IP_LIMIT = 60;
 export const AUTH_WINDOW_SECONDS = 15 * 60;
-let nextCleanup = 0;
+const limitState=globalThis as typeof globalThis & { gameQueueNextLimitCleanup?:number };
 async function cleanupLimits() {
-  if (Date.now() < nextCleanup) return;
-  nextCleanup = Date.now() + 60_000;
+  if (Date.now() < (limitState.gameQueueNextLimitCleanup||0)) return;
+  limitState.gameQueueNextLimitCleanup = Date.now() + 60_000;
   try { await db.query('DELETE FROM app_auth_limits WHERE expires_at<NOW()'); }
-  catch (error) { nextCleanup = 0; throw error; }
+  catch(error){console.error('GameQueue: Limit-Aufräumen fehlgeschlagen',error);}
 }
 export async function checkLimit(scope: string, identity: string, maximum = 10): Promise<boolean> {
   await ensureAccounts();

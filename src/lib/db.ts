@@ -1,4 +1,4 @@
-import { notFound } from '@/lib/errors';
+import { forbidden, validation, notFound } from '@/lib/errors';
 import { Pool, type QueryResultRow } from 'pg';
 import type { GameComment, GameDetail, GameStatus, GameSummary, GamesUser, Submitter } from '@/lib/types';
 
@@ -71,6 +71,8 @@ async function initializeSchema(): Promise<void> {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE games ADD COLUMN IF NOT EXISTS coming_soon BOOLEAN NOT NULL DEFAULT FALSE;
+    UPDATE games SET coming_soon=TRUE WHERE release_date ~* '^(Demn|Coming soon|TBA|Q[1-4])';
     CREATE INDEX IF NOT EXISTS idx_games_status ON games(status);
     CREATE INDEX IF NOT EXISTS idx_games_release ON games(release_timestamp);
     CREATE INDEX IF NOT EXISTS idx_games_created ON games(created_at DESC);
@@ -145,14 +147,14 @@ export async function listGames(input: GameQuery = {}): Promise<{ games: GameSum
   const where: string[] = [];
 
   if (input.search?.trim()) {
-    values.push(`%${input.search.trim()}%`);
-    where.push(`(g.title ILIKE $${values.length} OR g.short_description ILIKE $${values.length} OR g.genres::text ILIKE $${values.length})`);
+    values.push(`%${input.search.trim().replace(/[\\%_]/g, '\\$&')}%`);
+    where.push(`(g.title ILIKE $${values.length} ESCAPE E'\\\\' OR g.short_description ILIKE $${values.length} ESCAPE E'\\\\' OR g.genres::text ILIKE $${values.length} ESCAPE E'\\\\')`);
   }
   if (input.release === 'released') {
-    where.push(`(g.release_timestamp <= NOW() OR (g.release_timestamp IS NULL AND g.release_date NOT ILIKE 'Demn%'))`);
+    where.push(`(NOT g.coming_soon AND (g.release_timestamp <= NOW() OR g.release_timestamp IS NULL))`);
   }
   if (input.release === 'upcoming') {
-    where.push(`(g.release_timestamp > NOW() OR (g.release_timestamp IS NULL AND g.release_date ILIKE 'Demn%'))`);
+    where.push(`(g.coming_soon OR g.release_timestamp > NOW())`);
   }
   if (input.status && input.status !== 'all') {
     values.push(input.status);
@@ -190,7 +192,7 @@ export async function listGames(input: GameQuery = {}): Promise<{ games: GameSum
     FROM games g
     LEFT JOIN (
       SELECT game_id, SUM(value)::int AS score, COUNT(*)::int AS vote_count
-      FROM votes GROUP BY game_id
+      FROM votes v JOIN app_users u ON v.user_id='local:'||u.id::text WHERE NOT u.disabled GROUP BY game_id
     ) v ON v.game_id = g.id
     LEFT JOIN (
       SELECT game_id, COUNT(*)::int AS submission_count
@@ -221,7 +223,7 @@ export async function getGame(id: number, userId?: number): Promise<GameDetail |
     FROM games g
     LEFT JOIN (
       SELECT game_id, SUM(value)::int AS score, COUNT(*)::int AS vote_count
-      FROM votes GROUP BY game_id
+      FROM votes v JOIN app_users u ON v.user_id='local:'||u.id::text WHERE NOT u.disabled GROUP BY game_id
     ) v ON v.game_id = g.id
     LEFT JOIN (
       SELECT game_id, COUNT(*)::int AS submission_count
@@ -286,6 +288,7 @@ export type ImportedGame = {
   releaseDate: string;
   releaseTimestamp: Date | null;
   priceText: string;
+  comingSoon: boolean;
 };
 
 export async function submitGame(game: ImportedGame, user: GamesUser): Promise<{ id: number; created: boolean; submitted: boolean }> {
@@ -304,30 +307,30 @@ export async function submitGame(game: ImportedGame, user: GamesUser): Promise<{
           slug = $2, title = $3, short_description = $4, about = $5, header_image = $6,
           website = $7, developers = $8::jsonb, publishers = $9::jsonb, genres = $10::jsonb,
           modes = $11::jsonb, screenshots = $12::jsonb, release_date = $13,
-          release_timestamp = $14, price_text = $15, updated_at = NOW()
+          release_timestamp = $14, price_text = $15, coming_soon=$16, updated_at = NOW()
         WHERE id = $1
       `, [
         id, game.slug, game.title, game.shortDescription, game.about, game.headerImage, game.website,
         JSON.stringify(game.developers), JSON.stringify(game.publishers), JSON.stringify(game.genres),
         JSON.stringify(game.modes), JSON.stringify(game.screenshots), game.releaseDate,
-        game.releaseTimestamp, game.priceText
+        game.releaseTimestamp, game.priceText, game.comingSoon
       ]);
     } else {
       const inserted = await client.query(`
         INSERT INTO games (
           steam_app_id, slug, title, short_description, about, header_image, website,
           developers, publishers, genres, modes, screenshots, release_date,
-          release_timestamp, price_text, created_by_user_id
+          release_timestamp, price_text, created_by_user_id, coming_soon
         ) VALUES (
           $1, $2, $3, $4, $5, $6, $7,
           $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb, $12::jsonb, $13,
-          $14, $15, $16
+          $14, $15, $16, $17
         ) RETURNING id
       `, [
         game.steamAppId, game.slug, game.title, game.shortDescription, game.about, game.headerImage,
         game.website, JSON.stringify(game.developers), JSON.stringify(game.publishers),
         JSON.stringify(game.genres), JSON.stringify(game.modes), JSON.stringify(game.screenshots),
-        game.releaseDate, game.releaseTimestamp, game.priceText, `local:${user.id}`
+        game.releaseDate, game.releaseTimestamp, game.priceText, `local:${user.id}`, game.comingSoon
       ]);
       id = Number(inserted.rows[0].id);
       created = true;
@@ -351,60 +354,47 @@ export async function submitGame(game: ImportedGame, user: GamesUser): Promise<{
 }
 
 export async function setVote(gameId: number, user: GamesUser, value: -1 | 1): Promise<{ score: number; voteCount: number; userVote: number }> {
+  await ensureSchema(); const client=await db.connect();
+  try {
+    await client.query('BEGIN');
+    if(!(await client.query('SELECT id FROM games WHERE id=$1 FOR UPDATE',[gameId])).rowCount)throw notFound();
+    const existing=await client.query('SELECT value FROM votes WHERE game_id=$1 AND user_id=$2',[gameId,`local:${user.id}`]);
+    let userVote:number=value;
+    if(Number(existing.rows[0]?.value)===value) {await client.query('DELETE FROM votes WHERE game_id=$1 AND user_id=$2',[gameId,`local:${user.id}`]);userVote=0;}
+    else await client.query(`INSERT INTO votes(game_id,user_id,username,value) VALUES($1,$2,$3,$4) ON CONFLICT(game_id,user_id) DO UPDATE SET value=EXCLUDED.value,updated_at=NOW()`,[gameId,`local:${user.id}`,user.displayName||user.username,value]);
+    const aggregate=(await client.query("SELECT COALESCE(SUM(v.value),0)::int AS score,COUNT(*)::int AS vote_count FROM votes v JOIN app_users u ON v.user_id='local:'||u.id::text WHERE v.game_id=$1 AND NOT u.disabled",[gameId])).rows[0];
+    await client.query('COMMIT'); return {score:Number(aggregate.score),voteCount:Number(aggregate.vote_count),userVote};
+  }catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+}
+
+export const COMMENT_PAGE_SIZE=25;
+function commentFromRow(row: QueryResultRow): GameComment {
+  const cursor=Buffer.from(JSON.stringify({at:row.cursor_timestamp,id:String(row.id)})).toString('base64url');
+  return {id:Number(row.id),userId:Number(String(row.user_id).replace(/^local:/,''))||0,username:String(row.username),body:String(row.body),createdAt:isoValue(row.created_at),cursor};
+}
+const cursorTimestamp=`to_char(created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_timestamp`;
+export async function listComments(gameId:number,cursor?:string):Promise<GameComment[]> {
   await ensureSchema();
-  const existing = await db.query('SELECT value FROM votes WHERE game_id = $1 AND user_id = $2', [gameId, `local:${user.id}`]);
-  let userVote: number = value;
-  if (Number(existing.rows[0]?.value) === value) {
-    await db.query('DELETE FROM votes WHERE game_id = $1 AND user_id = $2', [gameId, `local:${user.id}`]);
-    userVote = 0;
-  } else {
-    await db.query(`
-      INSERT INTO votes (game_id, user_id, username, value)
-      VALUES ($1, $2, $3, $4)
-      ON CONFLICT (game_id, user_id)
-      DO UPDATE SET value = EXCLUDED.value, username = EXCLUDED.username, updated_at = NOW()
-    `, [gameId, `local:${user.id}`, user.displayName || user.username, value]);
+  const values:unknown[]=[gameId];let after='';
+  if(cursor) {
+    try {
+      const parsed=JSON.parse(Buffer.from(cursor,'base64url').toString('utf8'));
+      if(typeof parsed.at!=='string'||!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(parsed.at)||!Number.isFinite(Date.parse(parsed.at))||!/^\d{1,18}$/.test(parsed.id))throw validation();
+      values.push(parsed.at,parsed.id);after=' AND (created_at,id)<($2::timestamptz,$3::bigint)';
+    }catch{throw validation('Ungültiger Kommentar-Cursor.');}
   }
-
-  const aggregate = await db.query(
-    'SELECT COALESCE(SUM(value), 0)::int AS score, COUNT(*)::int AS vote_count FROM votes WHERE game_id = $1',
-    [gameId]
-  );
-  return {
-    score: Number(aggregate.rows[0].score),
-    voteCount: Number(aggregate.rows[0].vote_count),
-    userVote
-  };
+  const result=await db.query(`SELECT id,user_id,username,body,created_at,${cursorTimestamp} FROM comments WHERE game_id=$1${after} ORDER BY created_at DESC,id DESC LIMIT ${COMMENT_PAGE_SIZE}`,values);
+  return result.rows.map(commentFromRow);
 }
-
-export async function listComments(gameId: number): Promise<GameComment[]> {
+export async function addComment(gameId:number,user:GamesUser,body:string):Promise<GameComment> {
   await ensureSchema();
-  const result = await db.query(
-    'SELECT id, username, body, created_at FROM comments WHERE game_id = $1 ORDER BY created_at DESC LIMIT 100',
-    [gameId]
-  );
-  return result.rows.map((row) => ({
-    id: Number(row.id),
-    username: String(row.username),
-    body: String(row.body),
-    createdAt: isoValue(row.created_at)
-  }));
+  const result=await db.query(`INSERT INTO comments(game_id,user_id,username,body) VALUES($1,$2,$3,$4) RETURNING id,user_id,username,body,created_at,${cursorTimestamp}`,[gameId,`local:${user.id}`,user.displayName||user.username,body.trim()]);
+  return commentFromRow(result.rows[0]);
 }
-
-export async function addComment(gameId: number, user: GamesUser, body: string): Promise<GameComment> {
+export async function deleteComment(gameId:number,commentId:number,user:GamesUser):Promise<void> {
   await ensureSchema();
-  const result = await db.query(`
-    INSERT INTO comments (game_id, user_id, username, body)
-    VALUES ($1, $2, $3, $4)
-    RETURNING id, username, body, created_at
-  `, [gameId, `local:${user.id}`, user.displayName || user.username, body.trim()]);
-  const row = result.rows[0];
-  return {
-    id: Number(row.id),
-    username: String(row.username),
-    body: String(row.body),
-    createdAt: isoValue(row.created_at)
-  };
+  const result=await db.query('DELETE FROM comments WHERE id=$1 AND game_id=$2 AND (user_id=$3 OR $4) RETURNING id',[commentId,gameId,`local:${user.id}`,user.role==='ADMIN']);
+  if(!result.rowCount){if((await db.query('SELECT 1 FROM comments WHERE id=$1 AND game_id=$2',[commentId,gameId])).rowCount)throw forbidden();throw notFound();}
 }
 
 export async function updateGame(gameId: number, status: GameStatus, ownerScore: number | null): Promise<void> {
@@ -422,3 +412,7 @@ export async function deleteGame(gameId: number): Promise<void> {
   if (!result.rowCount) throw notFound();
 }
 
+export async function refreshGame(gameId:number,game:ImportedGame):Promise<void> {
+  const result=await db.query(`UPDATE games SET slug=$2,title=$3,short_description=$4,about=$5,header_image=$6,website=$7,developers=$8::jsonb,publishers=$9::jsonb,genres=$10::jsonb,modes=$11::jsonb,screenshots=$12::jsonb,release_date=$13,release_timestamp=$14,price_text=$15,coming_soon=$16,updated_at=NOW() WHERE id=$1`,[gameId,game.slug,game.title,game.shortDescription,game.about,game.headerImage,game.website,JSON.stringify(game.developers),JSON.stringify(game.publishers),JSON.stringify(game.genres),JSON.stringify(game.modes),JSON.stringify(game.screenshots),game.releaseDate,game.releaseTimestamp,game.priceText,game.comingSoon]);
+  if(!result.rowCount)throw notFound();
+}

@@ -1,3 +1,7 @@
+import { authLimit } from '@/lib/accounts';
+import { fetchSteamGame } from '@/lib/steam';
+import { getGame, refreshGame } from '@/lib/db';
+import { notFound, positiveId, rateLimited } from '@/lib/errors';
 import { toResponse } from '@/lib/errors';
 import { sameOrigin } from '@/lib/auth-http';
 import { NextResponse } from 'next/server';
@@ -37,3 +41,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   } catch (error) { return toResponse(error); }
 }
 
+export async function POST(request:Request,{params}:{params:Promise<{id:string}>}) {
+  try {sameOrigin(request);const admin=await requireAdmin();if(!await authLimit('steam-refresh',String(admin.id),20,3600))throw rateLimited();
+    const id=positiveId((await params).id),game=await getGame(id);if(!game)throw notFound();
+    await refreshGame(id,await fetchSteamGame(game.steamAppId));return NextResponse.json({ok:true});
+  }catch(error){return toResponse(error);}
+}

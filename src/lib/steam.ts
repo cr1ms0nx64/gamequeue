@@ -63,22 +63,18 @@ function slugify(title: string, appId: number): string {
   return `${slug || 'steam-game'}-${appId}`;
 }
 
-function releaseTimestamp(dateValue: string | undefined): Date | null {
+export function parseSteamReleaseDate(dateValue: string | undefined): Date | null {
   if (!dateValue) return null;
-  const native = new Date(dateValue);
-  if (!Number.isNaN(native.getTime())) return native;
-
-  const normalized = dateValue.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f.]/g, '');
-  const match = normalized.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
-  if (!match) return null;
-  const months: Record<string, number> = {
-    jan: 0, januar: 0, feb: 1, februar: 1, mar: 2, marz: 2, apr: 3, april: 3,
-    mai: 4, jun: 5, juni: 5, jul: 6, juli: 6, aug: 7, august: 7,
-    sep: 8, sept: 8, september: 8, okt: 9, oktober: 9, nov: 10, november: 10,
-    dez: 11, dezember: 11
-  };
-  const month = months[match[2]];
-  return month == null ? null : new Date(Date.UTC(Number(match[3]), month, Number(match[1]), 12));
+  const normalized=dateValue.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f.,]/g,'').trim().replace(/\s+/g,' ');
+  const dayFirst=normalized.match(/^(\d{1,2}) ([a-z]+) (\d{4})$/);
+  const monthFirst=normalized.match(/^([a-z]+) (\d{1,2}) (\d{4})$/);
+  if(!dayFirst&&!monthFirst)return null;
+  const day=Number(dayFirst?.[1]||monthFirst?.[2]),year=Number(dayFirst?.[3]||monthFirst?.[3]);
+  const name=dayFirst?.[2]||monthFirst?.[1]||'';
+  const months:Record<string,number>={jan:0,januar:0,january:0,feb:1,februar:1,february:1,mar:2,marz:2,march:2,apr:3,april:3,mai:4,may:4,jun:5,juni:5,june:5,jul:6,juli:6,july:6,aug:7,august:7,sep:8,sept:8,september:8,okt:9,oktober:9,oct:9,october:9,nov:10,november:10,dez:11,dezember:11,dec:11,december:11};
+  const month=months[name];if(month===undefined||year<1970||year>9999)return null;
+  const date=new Date(Date.UTC(year,month,day,12));
+  return date.getUTCFullYear()===year&&date.getUTCMonth()===month&&date.getUTCDate()===day?date:null;
 }
 
 function safeWebsite(value: string | null | undefined): string | null {
@@ -137,7 +133,8 @@ export async function fetchSteamGame(appId: number): Promise<ImportedGame> {
     modes: gameModes(data.categories),
     screenshots: (data.screenshots || []).map((item) => item.path_full || '').filter(Boolean).slice(0, 20),
     releaseDate: data.release_date?.date || (data.release_date?.coming_soon ? 'Demnächst' : 'Unbekannt'),
-    releaseTimestamp: releaseTimestamp(data.release_date?.date),
+    releaseTimestamp: parseSteamReleaseDate(data.release_date?.date),
+    comingSoon: Boolean(data.release_date?.coming_soon),
     priceText: data.is_free ? 'Kostenlos spielbar' : data.price_overview?.final_formatted || 'Preis nicht verfügbar'
   };
   } catch (error) { if (error instanceof AppError) throw error; throw upstream('Der Steam-Import ist vorübergehend nicht verfügbar.'); }

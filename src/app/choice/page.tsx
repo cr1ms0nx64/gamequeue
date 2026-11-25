@@ -49,7 +49,7 @@ export default async function ChoicePage({ searchParams }: { searchParams?: Prom
         sort={sort}
         tabKey="filter"
         tabs={[
-          { value: 'hot', label: 'Heißer Scheiß' },
+          { value: 'hot', label: 'Geplant' },
           { value: 'singleplayer', label: 'Singleplayer' },
           { value: 'multiplayer', label: 'Multiplayer' },
           { value: 'playing', label: 'Aktuell gespielt' },

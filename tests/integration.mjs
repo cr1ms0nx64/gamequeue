@@ -8,9 +8,10 @@ const setupToken = process.env.TEST_SETUP_TOKEN;
 if (!base || !origin || !setupToken || !process.env.DATABASE_URL || !process.env.TEST_DATABASE_DISPOSABLE) throw new Error('Set TEST_BASE_URL, PUBLIC_ORIGIN, TEST_SETUP_TOKEN, DATABASE_URL and TEST_DATABASE_DISPOSABLE=1. Use a fresh test database.');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const query = (sql, args) => pool.query(sql, args);
+const gamesRepo=await import('../src/lib/db.ts');
 let checks = 0;
-async function request(path, data, cookie = '', expected = 200, requestOrigin = origin, ip = '198.51.100.9') {
-  const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', origin: requestOrigin, cookie, 'x-forwarded-for': ip }, body: JSON.stringify(data), redirect: 'manual' });
+async function request(path, data, cookie = '', expected = 200, requestOrigin = origin, ip = '198.51.100.9', method = 'POST') {
+  const response = await fetch(base + path, { method, headers: { 'content-type': 'application/json', origin: requestOrigin, cookie, 'x-forwarded-for': ip }, body: JSON.stringify(data), redirect: 'manual' });
   const result = await response.json();
   assert.equal(response.status, expected, `${path}: ${JSON.stringify(result)}`); checks++;
   return { ...result, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
@@ -114,6 +115,41 @@ try {
   await query("DELETE FROM app_auth_limits WHERE key IS NOT NULL");
   for (let i=0; i<10; i++) await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 401);
   await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 429);
+  // Moderation, cursor ties, name namespace, disabled votes and literal search.
+  await query('DELETE FROM app_auth_limits');
+  let author=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  const authorId=(await query("SELECT id FROM app_users WHERE username='openuser'")).rows[0].id;
+  const own=await request(`/api/games/${game}/comments`,{body:'Author comment'},author.cookie);
+  const originalComment=(await query('SELECT id FROM comments WHERE game_id=$1 ORDER BY id LIMIT 1',[game])).rows[0].id;
+  await request(`/api/games/${game}/comments/${originalComment}`,{},author.cookie,403,origin,'198.51.100.9','DELETE');
+  await request(`/api/games/${game}/comments/${own.comment.id}`,{},admin.cookie,200,origin,'198.51.100.9','DELETE');
+  const another=await request(`/api/games/${game}/comments`,{body:'Author deletes own'},author.cookie);
+  await request(`/api/games/${game}/comments/${another.comment.id}`,{},author.cookie,200,origin,'198.51.100.9','DELETE');
+  await query("INSERT INTO comments(game_id,user_id,username,body,created_at) SELECT $1,'local:'||$2::text,'Fixture','Page '||n,'2020-01-01T00:00:00.000123Z'::timestamptz FROM generate_series(1,30) n",[game,authorId]);
+  let page=await (await fetch(base+`/api/games/${game}/comments`)).json();const ids=page.comments.map(item=>item.id);
+  assert.equal(ids.length,25);checks++;
+  page=await (await fetch(base+`/api/games/${game}/comments?cursor=${encodeURIComponent(page.nextCursor)}`)).json();
+  const allIds=[...ids,...page.comments.map(item=>item.id)];assert.equal(new Set(allIds).size,31);checks++;
+  assert.equal(page.nextCursor,null);checks++;
+  await request('/api/account',{displayName:credentials.username.toUpperCase()},author.cookie,409);
+  await request('/api/account',{displayName:'admin'},author.cookie,400);
+  await request('/api/account',{displayName:'Name\nInjected'},author.cookie,400);
+  await request(`/api/games/${game}/vote`,{value:1},author.cookie);
+  await request('/api/admin',{action:'user',id:authorId,role:'USER',disabled:true},admin.cookie);
+  assert.equal((await gamesRepo.getGame(game)).score,1);checks++;
+  assert.equal((await gamesRepo.getGame(game)).voteCount,1);checks++;
+  await request('/api/admin',{action:'user',id:authorId,role:'USER',disabled:false},admin.cookie);
+  assert.equal((await gamesRepo.getGame(game)).score,2);checks++;
+  const simultaneous=await Promise.all([1,2].map(()=>fetch(base+`/api/games/${game}/vote`,{method:'POST',headers:{'content-type':'application/json',origin,cookie:admin.cookie},body:JSON.stringify({value:1})})));
+  assert.deepEqual(simultaneous.map(item=>item.status),[200,200]);checks++;
+  assert.equal((await gamesRepo.getGame(game)).score,2);checks++;
+  await query("UPDATE games SET title='Literal %_\\ value' WHERE id=$1",[game]);
+  assert.equal((await gamesRepo.listGames({search:'%_\\'})).total,1);checks++;
+  assert.equal((await gamesRepo.listGames({search:'does-not-match%'})).total,0);checks++;
+  await query("UPDATE games SET coming_soon=TRUE,release_date='Unbekannt' WHERE id=$1",[game]);
+  assert.equal((await gamesRepo.listGames({release:'upcoming'})).total,1);checks++;
+  assert.equal((await gamesRepo.listGames({release:'released'})).total,0);checks++;
+  await request('/api/games/2147483647/admin',{},admin.cookie,404);
   // Password reset tokens are hashed, expiring, replacing and single-use.
   await query('DELETE FROM app_auth_limits');
   const recoveryUser=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
@@ -153,4 +189,4 @@ try {
   for (let i=0; i<50; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401, origin, '192.0.2.'+(i+1));
   await request('/api/auth/login', credentials, '', 429, origin, '192.0.2.100');
   console.log(`Passed ${checks} integration checks against a disposable PostgreSQL database.`);
-} finally { await pool.end(); }
+} finally { await pool.end(); await gamesRepo.db.end(); }
