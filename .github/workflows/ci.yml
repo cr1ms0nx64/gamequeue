@@ -1,0 +1,54 @@
+name: Quality
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: games_test
+          POSTGRES_USER: games_test
+          POSTGRES_PASSWORD: integration-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U games_test -d games_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://games_test:integration-test-only@localhost:5432/games_test
+      PUBLIC_ORIGIN: http://localhost:3000
+      SETUP_TOKEN: ci-setup-token-only-for-disposable-test-database
+      TEST_SETUP_TOKEN: ci-setup-token-only-for-disposable-test-database
+      TEST_BASE_URL: http://localhost:3000
+      TEST_DATABASE_DISPOSABLE: '1'
+      STEAM_AUTH_ENABLED: 'true'
+      TRUST_PROXY: 'false'
+      NEXT_TELEMETRY_DISABLED: '1'
+      HOSTNAME: 127.0.0.1
+      PORT: '3000'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+      - name: Integration checks
+        run: |
+          npm start > /tmp/games-app.log 2>&1 &
+          trap 'cat /tmp/games-app.log' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:3000/api/health; then break; fi
+            sleep 1
+          done
+          npm run test:integration
