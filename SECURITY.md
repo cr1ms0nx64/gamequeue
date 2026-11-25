@@ -16,7 +16,7 @@ Authenticated JSON mutation endpoints verify the request Origin against PUBLIC_O
 
 Use a dedicated database and database account. PUBLIC_ORIGIN must exactly match the external origin. Use HTTPS outside localhost. TRUST_PROXY defaults to false, sharing an IP rate-limit bucket between clients. Enable it only when the reverse proxy overwrites X-Forwarded-For and direct access to the app is blocked. The supplied Compose app port binds to loopback.
 
-Never publish .env.local, production databases, session tokens, invite URLs or Hub credentials. The repository includes no automatic migration of Hub identities. Standalone game participation IDs use a local: prefix, isolating them from historical numeric Hub IDs. Existing games participation must be deliberately mapped to retain ownership.
+Never publish .env.local, production databases, session tokens or invite URLs. Standalone game participation IDs use a local: prefix. Existing games participation must be deliberately mapped to retain ownership.
 
 No password recovery email or local MFA is implemented. Maintain access to an administrator account. Steam-only accounts authenticate through Steam and cannot set a local password through the profile page.
 
