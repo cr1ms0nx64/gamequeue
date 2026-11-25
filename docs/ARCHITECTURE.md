@@ -17,6 +17,3 @@ Local setup, admission, invite use and administrator changes share a transaction
 
 Extracted from cr1ms0nx64/cr1ms0n-suite, commit f60cd227bffe583e1b87c1c97dc5598cd0623ab6, directory games-app. Original MIT attribution is retained. The standalone release intentionally starts with a separate account namespace and contains no production database or credentials.
 
-## Existing installation
-
-Use a fresh database for this edition. This release does not deploy over games.cr1ms0n.xyz or modify the Hub. To retain existing community history, first design an explicit mapping from Hub user IDs to standalone account IDs, then migrate submissions, votes, comments and created_by_user_id consistently. Do not attach a populated Hub-era games database directly to local accounts.
