@@ -175,6 +175,47 @@ try {
   assert.equal((await query('SELECT 1 FROM app_sessions WHERE user_id=$1',[recoveryId])).rowCount,0);checks++;
   await request('/api/account',{displayName:'No session'},recoveryUser.cookie,401);
   await request('/api/auth/login',{username:'openuser',password:'Reset-password-only-1234'});
+  // Data export/deletion and server-generated script nonces.
+  await query('DELETE FROM app_auth_limits');
+  const dataInvite=await request('/api/admin',{action:'invite',days:7},admin.cookie);
+  const dataUser=await request('/api/auth/register',{username:'deleteuser',password:credentials.password,invite:new URL(dataInvite.inviteUrl).searchParams.get('invite')});
+  const dataId=(await query("SELECT id FROM app_users WHERE username='deleteuser'")).rows[0].id;
+  await query('UPDATE games SET created_by=$1 WHERE id=$2',[dataId,game]);
+  await query('INSERT INTO submissions(game_id,user_ref) VALUES($1,$2)',[game,dataId]);
+  await request(`/api/games/${game}/vote`,{value:1},dataUser.cookie);
+  await request(`/api/games/${game}/comments`,{body:'Delete with account'},dataUser.cookie);
+  await query("INSERT INTO legacy_orphans(source_table,legacy_key,reason,data) SELECT 'app_users.names',id::text,'fixture',to_jsonb(u) FROM app_users u WHERE id=$1",[dataId]);
+  await request('/api/admin',{action:'reset',id:dataId},admin.cookie);
+  const exported=await fetch(base+'/api/account/export',{method:'POST',headers:{origin,cookie:dataUser.cookie}});
+  assert.equal(exported.status,200);checks++;
+  assert.ok(exported.headers.get('content-disposition').includes('attachment'));checks++;
+  const data=await exported.json();assert.equal(data.profile.username,'deleteuser');checks++;
+  assert.equal(data.votes.length,1);checks++;assert.equal(data.comments.length,1);checks++;assert.equal(data.submissions.length,1);checks++;
+  assert.equal(JSON.stringify(data).includes('password_hash'),false);checks++;
+  await request('/api/account/export',{},dataUser.cookie,403,'https://evil.test');
+  await request('/api/admin',{action:'delete',id:dataId,username:'deleteuser'},dataUser.cookie,403);
+  await request('/api/account',{username:'other',password:credentials.password},dataUser.cookie,400,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:'deleteuser',password:'incorrect-password'},dataUser.cookie,403,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:credentials.username,password:credentials.password},admin.cookie,400,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:'deleteuser',password:credentials.password},dataUser.cookie,200,origin,'198.51.100.9','DELETE');
+  for(const table of ['app_sessions','app_password_resets','votes','comments','submissions']) {
+    const column=table.startsWith('app_')?'user_id':'user_ref';
+    assert.equal((await query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${column}=$1`,[dataId])).rows[0].n,0);checks++;
+  }
+  assert.equal((await query('SELECT created_by FROM games WHERE id=$1',[game])).rows[0].created_by,null);checks++;
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM legacy_orphans WHERE source_table='app_users.names' AND legacy_key=$1",[String(dataId)])).rows[0].n,0);checks++;
+  await request('/api/account',{displayName:'Deleted'},dataUser.cookie,401);
+  await request('/api/admin',{action:'delete',id:1,username:credentials.username},admin.cookie,400);
+  // An admin may remove a Steam-only account without inventing a password.
+  await request('/api/admin',{action:'delete',id:steamOnly,username:'steam_resetfixture'},admin.cookie);
+  assert.equal((await query('SELECT 1 FROM app_users WHERE id=$1',[steamOnly])).rowCount,0);checks++;
+  const document=await fetch(base+'/'),policy=document.headers.get('content-security-policy')||'',html=await document.text();
+  const scriptPolicy=policy.split(';').find(item=>item.trim().startsWith('script-src'))||'';
+  assert.ok(!scriptPolicy.includes('unsafe-inline'));checks++;
+  const nonce=scriptPolicy.match(/'nonce-([^']+)'/)?.[1];assert.ok(nonce);checks++;
+  const scripts=[...html.matchAll(/<script\b[^>]*>/g)].map(match=>match[0]);assert.ok(scripts.length);checks++;
+  assert.ok(scripts.every(script=>script.includes(`nonce="${nonce}"`)));checks++;
+  const secondPolicy=(await fetch(base+'/')).headers.get('content-security-policy');assert.notEqual(secondPolicy,policy);checks++;
   await request('/api/games',{steamUrl:'9999999999'},admin.cookie,400);
   await request('/api/games/2147483647/vote',{value:1},admin.cookie,404);
   // Login failures from one client must not lock out another client.

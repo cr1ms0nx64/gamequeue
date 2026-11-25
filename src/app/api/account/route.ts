@@ -1,3 +1,6 @@
+import { SESSION_COOKIE } from '@/lib/auth';
+import { cookieOptions } from '@/lib/auth-http';
+import { deleteAccount } from '@/lib/repos/account-data';
 import { forbidden, rateLimited } from '@/lib/errors';
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
@@ -25,4 +28,17 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ok: true, passwordChanged: Boolean(input.password) });
   } catch (error) { return authError(error); }
+}
+const deleteSchema=z.object({username:z.string().min(1).max(64),password:z.string().max(128).optional()});
+export async function DELETE(request:Request) {
+  try {sameOrigin(request);const user=await requireUser();if(!await authLimit('account-delete',String(user.id),5))throw rateLimited();
+    const input=deleteSchema.parse(await request.json());
+    await transaction(async client=>{
+      const row=(await client.query('SELECT password_hash,disabled FROM app_users WHERE id=$1 FOR UPDATE',[user.id])).rows[0];
+      if(!row||row.disabled)throw forbidden();
+      if(row.password_hash&&!await verifyPassword(input.password||'',row.password_hash))throw forbidden();
+      await deleteAccount(client,user.id,input.username);
+    });
+    const response=NextResponse.json({ok:true});response.cookies.set(SESSION_COOKIE,'',{...cookieOptions(),maxAge:0});response.headers.set('Cache-Control','no-store');return response;
+  }catch(error){return authError(error);}
 }

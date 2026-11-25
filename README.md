@@ -241,3 +241,30 @@ SELECT id, source_table, legacy_key, data FROM legacy_orphans ORDER BY id;
 ```
 
 Die archivierten Daten enthalten personenbezogene Informationen und gegebenenfalls Passwort-Hashes alter Profile. Nicht öffentlich weitergeben. Eine Zuordnung ehemaliger Hub-IDs wird bewusst nicht geraten. Der Upgrade-Test (`npm run test:upgrade`) erstellt ausschließlich bei `TEST_DATABASE_DISPOSABLE=1` eine eigene temporäre Datenbank und prüft Erhalt, Archivierung, erneuten Start und Prüfsummenfehler.
+
+## Backup und Wiederherstellung
+
+Regelmäßig Datenbank und `.env.local` getrennt und geschützt sichern. Ein vollständiges Backup enthält Benutzerprofile, Passwort-Hashes, Tokens als Hashes und gegebenenfalls historische Archive. Für einen konsistenten Wiederherstellungspunkt die App anhalten:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_dump -U games -d games -Fc > gamequeue.dump
+docker compose up -d app
+```
+
+Zur Wiederherstellung eine eigene Datenbank bzw. ein leeres PostgreSQL-Volume verwenden. Der folgende Restore ersetzt vorhandene Daten in der Zieldatenbank:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_restore -U games -d games --clean --if-exists --no-owner --exit-on-error < gamequeue.dump
+docker compose up -d app
+docker compose ps
+```
+
+Die App prüft beim Start die Migrationen und meldet Datenbank-/Migrationsprobleme über `/api/health`. Docker und Compose verwenden diesen Endpunkt. Healthcheck-Fehler im App-Log prüfen, bevor weitere Updates erfolgen.
+
+## Mein Konto und Datenschutz
+
+Unter „Mein Konto“ lassen sich Profil und eigene Community-Daten als JSON exportieren. Eine Kontolöschung benötigt den exakten Benutzernamen und bei lokalen Konten das aktuelle Passwort. Sitzungen, Votes, Kommentare, Vorschläge und zuordenbare archivierte Einträge werden gelöscht; Spiele bleiben mit unbekanntem Ersteller bestehen. Der letzte aktive Administrator kann nicht gelöscht werden.
+
+HTML erhält eine neue CSP-Nonce pro Anfrage; produktives `script-src` enthält kein `unsafe-inline`. Styles behalten zur Wahrung des bestehenden Designs ihre Inline-Freigabe. HTML darf am Reverse Proxy nicht zwischengespeichert werden. Bei HTTPS-PUBLIC_ORIGIN wird HSTS gesetzt.
