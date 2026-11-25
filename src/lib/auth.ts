@@ -1,3 +1,4 @@
+import { forbidden, unauthenticated } from '@/lib/errors';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { asUser, ensureAccounts } from '@/lib/accounts';
@@ -13,11 +14,11 @@ export async function currentUser(): Promise<GamesUser | null> {
 }
 export async function requireUser(): Promise<GamesUser> {
   const user = await currentUser();
-  if (!user) throw new Error('UNAUTHENTICATED');
+  if (!user) throw unauthenticated();
   return user;
 }
 export async function requireAdmin(): Promise<GamesUser> {
   const user = await requireUser();
-  if (user.role !== 'ADMIN') throw new Error('FORBIDDEN');
+  if (user.role !== 'ADMIN') throw forbidden();
   return user;
 }

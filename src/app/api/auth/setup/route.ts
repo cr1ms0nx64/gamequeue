@@ -1,3 +1,4 @@
+import { forbidden, rateLimited } from '@/lib/errors';
 import { timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { authLimit, createLocalUser } from '@/lib/accounts';
@@ -7,10 +8,10 @@ const schema = z.object({ username: z.string().regex(/^[a-zA-Z0-9_]{3,32}$/).ref
 export async function POST(request: Request) {
   try {
     sameOrigin(request);
-    if (!await authLimit('setup', clientKey(request), 5)) throw new Error('RATE_LIMIT');
+    if (!await authLimit('setup', clientKey(request), 5)) throw rateLimited();
     const input = schema.parse(await request.json());
     const expected = process.env.SETUP_TOKEN || '';
-    if (expected.length < 32 || !timingSafeEqual(Buffer.from(digest(input.setupToken)), Buffer.from(digest(expected)))) throw new Error('FORBIDDEN');
+    if (expected.length < 32 || !timingSafeEqual(Buffer.from(digest(input.setupToken)), Buffer.from(digest(expected)))) throw forbidden();
     const user = await createLocalUser({ ...input, setup: true });
     return sessionResponse(user.id);
   } catch (error) { return authError(error); }

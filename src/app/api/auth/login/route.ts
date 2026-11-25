@@ -1,3 +1,4 @@
+import { rateLimited } from '@/lib/errors';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db';
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     const pair = JSON.stringify([name, ip]);
     if (!await checkLimit('login-user-ip', pair, LOGIN_PAIR_LIMIT) ||
         !await checkLimit('login-user', name, LOGIN_USERNAME_LIMIT) ||
-        !await checkLimit('login-ip', ip, LOGIN_IP_LIMIT)) throw new Error('RATE_LIMIT');
+        !await checkLimit('login-ip', ip, LOGIN_IP_LIMIT)) throw rateLimited();
     const row = (await db.query('SELECT * FROM app_users WHERE lower(username)=lower($1)', [input.username])).rows[0];
     const valid = await verifyPassword(input.password, row?.password_hash || await dummyHash);
     if (!row || row.disabled || !row.password_hash || !valid) {

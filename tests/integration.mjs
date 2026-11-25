@@ -114,6 +114,8 @@ try {
   await query("DELETE FROM app_auth_limits WHERE key IS NOT NULL");
   for (let i=0; i<10; i++) await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 401);
   await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 429);
+  await request('/api/games',{steamUrl:'9999999999'},admin.cookie,400);
+  await request('/api/games/2147483647/vote',{value:1},admin.cookie,404);
   // Login failures from one client must not lock out another client.
   await query('DELETE FROM app_auth_limits');
   for (let i=0; i<10; i++) await request('/api/auth/login', {username: credentials.username, password:'wrong'}, '', 401, origin, '198.51.100.1');

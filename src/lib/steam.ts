@@ -1,3 +1,4 @@
+import { AppError, upstream } from '@/lib/errors';
 import type { ImportedGame } from '@/lib/db';
 
 type SteamCategory = { id?: number; description?: string };
@@ -25,16 +26,15 @@ type SteamAppData = {
 type SteamPayload = Record<string, { success?: boolean; data?: SteamAppData }>;
 
 export function parseSteamAppId(input: string): number | null {
+  const bounded = (raw: string) => { const id = Number(raw); return Number.isInteger(id) && id >= 1 && id <= 2147483647 ? id : null; };
   const value = input.trim();
-  if (/^\d{2,10}$/.test(value)) return Number(value);
+  if (/^\d{1,10}$/.test(value)) return bounded(value);
   try {
     const url = new URL(value);
     if (!/(^|\.)steampowered\.com$/i.test(url.hostname)) return null;
-    const match = url.pathname.match(/\/app\/(\d+)/i);
-    return match ? Number(match[1]) : null;
-  } catch {
-    return null;
-  }
+    const match = url.pathname.match(/^\/app\/(\d+)(?:\/|$)/i);
+    return match ? bounded(match[1]) : null;
+  } catch { return null; }
 }
 
 function plainText(value = ''): string {
@@ -105,6 +105,7 @@ export async function fetchSteamGame(appId: number): Promise<ImportedGame> {
   url.searchParams.set('l', 'german');
   url.searchParams.set('cc', 'de');
 
+  try {
   const response = await fetch(url, {
     headers: {
       accept: 'application/json',
@@ -113,13 +114,13 @@ export async function fetchSteamGame(appId: number): Promise<ImportedGame> {
     cache: 'no-store',
     signal: AbortSignal.timeout(12_000)
   });
-  if (!response.ok) throw new Error(`Steam antwortet mit HTTP ${response.status}.`);
+  if (!response.ok) throw upstream('Steam ist vorübergehend nicht erreichbar.');
 
   const payload = await response.json() as SteamPayload;
   const entry = payload[String(appId)];
   const data = entry?.data;
   if (!entry?.success || !data?.name || !data.header_image || data.type !== 'game') {
-    throw new Error('Diese Steam-ID gehört zu keinem verfügbaren Spiel.');
+    throw upstream('Diese Steam-ID gehört zu keinem verfügbaren Spiel.');
   }
 
   return {
@@ -139,5 +140,6 @@ export async function fetchSteamGame(appId: number): Promise<ImportedGame> {
     releaseTimestamp: releaseTimestamp(data.release_date?.date),
     priceText: data.is_free ? 'Kostenlos spielbar' : data.price_overview?.final_formatted || 'Preis nicht verfügbar'
   };
+  } catch (error) { if (error instanceof AppError) throw error; throw upstream('Der Steam-Import ist vorübergehend nicht verfügbar.'); }
 }
 

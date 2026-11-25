@@ -1,3 +1,4 @@
+import { validation } from '@/lib/errors';
 import { db } from '@/lib/db';
 import type { PoolClient } from 'pg';
 import { digest, hashPassword, randomToken } from '@/lib/passwords';
@@ -49,20 +50,20 @@ export async function transaction<T>(run: (client: PoolClient) => Promise<T>): P
 }
 export async function admit(client: PoolClient, invite: string, alreadyHashed = false) {
   const mode = (await client.query('SELECT registration FROM app_settings WHERE id=TRUE')).rows[0].registration;
-  if (mode === 'closed') throw new Error('Die Registrierung ist geschlossen.');
+  if (mode === 'closed') throw validation('Die Registrierung ist geschlossen.');
   if (invite) {
     const result = await client.query(`UPDATE app_invites SET used_at=NOW() WHERE token_hash=$1 AND used_at IS NULL AND NOT revoked AND expires_at>NOW() RETURNING token_hash`, [alreadyHashed ? invite : digest(invite)]);
-    if (!result.rowCount) throw new Error('Einladung ungültig oder abgelaufen.');
-  } else if (mode === 'invite') throw new Error('Eine Einladung ist erforderlich.');
+    if (!result.rowCount) throw validation('Einladung ungültig oder abgelaufen.');
+  } else if (mode === 'invite') throw validation('Eine Einladung ist erforderlich.');
 }
 export async function createLocalUser(input: { username: string; password: string; invite?: string; setup?: boolean }) {
   const passwordHash = await hashPassword(input.password);
   return transaction(async client => {
     const exists = (await client.query('SELECT 1 FROM app_users LIMIT 1')).rowCount !== 0;
     if (input.setup) {
-      if (exists) throw new Error('Das Setup wurde bereits abgeschlossen.');
+      if (exists) throw validation('Das Setup wurde bereits abgeschlossen.');
     } else {
-      if (!exists) throw new Error('Bitte zuerst das Setup abschließen.');
+      if (!exists) throw validation('Bitte zuerst das Setup abschließen.');
       await admit(client, input.invite || '');
     }
     const result = await client.query(`INSERT INTO app_users(username,display_name,password_hash,role) VALUES($1,$1,$2,$3) RETURNING *`, [input.username, passwordHash, input.setup ? 'ADMIN' : 'USER']);

@@ -1,3 +1,4 @@
+import { toResponse } from '@/lib/errors';
 import { sameOrigin } from '@/lib/auth-http';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -23,11 +24,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ ok: false, error: 'Der Kommentar muss zwischen 1 und 1000 Zeichen lang sein.' }, { status: 400 });
     }
     return NextResponse.json({ ok: true, comment: await addComment(gameId, user, parsed.data.body) });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ ok: false, error: 'Bitte zuerst anmelden.' }, { status: 401 });
-    }
-    return NextResponse.json({ ok: false, error: 'Kommentar konnte nicht gespeichert werden.' }, { status: 500 });
-  }
+  } catch (error) { return toResponse(error); }
 }
 

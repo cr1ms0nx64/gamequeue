@@ -1,3 +1,4 @@
+import { toResponse } from '@/lib/errors';
 import { sameOrigin } from '@/lib/auth-http';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -7,7 +8,7 @@ import { rateLimit, requestKey } from '@/lib/rate-limit';
 import { fetchSteamGame, parseSteamAppId } from '@/lib/steam';
 
 const schema = z.object({
-  steamUrl: z.string().trim().min(2).max(500)
+  steamUrl: z.string().trim().min(1).max(500)
 });
 
 export async function POST(request: Request) {
@@ -33,12 +34,6 @@ export async function POST(request: Request) {
       ok: true,
       game: { ...result, title: imported.title }
     });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ ok: false, error: 'Bitte zuerst anmelden.' }, { status: 401 });
-    }
-    const message = error instanceof Error ? error.message : 'Der Steam-Import ist fehlgeschlagen.';
-    return NextResponse.json({ ok: false, error: message }, { status: 502 });
-  }
+  } catch (error) { return toResponse(error); }
 }
 

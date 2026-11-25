@@ -1,3 +1,4 @@
+import { toResponse } from '@/lib/errors';
 import { sameOrigin } from '@/lib/auth-http';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -21,11 +22,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const parsed = schema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return NextResponse.json({ ok: false, error: 'Ungültige Bewertung.' }, { status: 400 });
     return NextResponse.json({ ok: true, vote: await setVote(gameId, user, parsed.data.value) });
-  } catch (error) {
-    if (error instanceof Error && error.message === 'UNAUTHENTICATED') {
-      return NextResponse.json({ ok: false, error: 'Bitte zuerst anmelden.' }, { status: 401 });
-    }
-    return NextResponse.json({ ok: false, error: 'Bewertung konnte nicht gespeichert werden.' }, { status: 500 });
-  }
+  } catch (error) { return toResponse(error); }
 }
 

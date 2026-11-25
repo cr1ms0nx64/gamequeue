@@ -1,3 +1,4 @@
+import { notFound } from '@/lib/errors';
 import { Pool, type QueryResultRow } from 'pg';
 import type { GameComment, GameDetail, GameStatus, GameSummary, GamesUser, Submitter } from '@/lib/types';
 
@@ -408,14 +409,16 @@ export async function addComment(gameId: number, user: GamesUser, body: string):
 
 export async function updateGame(gameId: number, status: GameStatus, ownerScore: number | null): Promise<void> {
   await ensureSchema();
-  await db.query(
+  const result = await db.query(
     'UPDATE games SET status = $2, owner_score = $3, updated_at = NOW() WHERE id = $1',
     [gameId, status, ownerScore]
   );
+  if (!result.rowCount) throw notFound();
 }
 
 export async function deleteGame(gameId: number): Promise<void> {
   await ensureSchema();
-  await db.query('DELETE FROM games WHERE id = $1', [gameId]);
+  const result = await db.query('DELETE FROM games WHERE id = $1', [gameId]);
+  if (!result.rowCount) throw notFound();
 }
 

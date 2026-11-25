@@ -1,3 +1,4 @@
+import { forbidden } from '@/lib/errors';
 import { publicOrigin } from '@/lib/origins';
 export const STEAM_ENDPOINT = 'https://steamcommunity.com/openid/login';
 export const OPENID_NS = 'http://specs.openid.net/auth/2.0';
@@ -9,15 +10,15 @@ export function steamLoginUrl(state: string) {
   return url;
 }
 export function validateSteamAssertion(params: URLSearchParams, state: string, now = Date.now()) {
-  for (const key of new Set(params.keys())) if (params.getAll(key).length !== 1) throw new Error('Duplicate assertion field');
-  if (params.get('openid.ns') !== OPENID_NS || params.get('openid.mode') !== 'id_res' || params.get('openid.op_endpoint') !== STEAM_ENDPOINT || params.get('openid.return_to') !== steamCallback(state)) throw new Error('Invalid Steam response');
+  for (const key of new Set(params.keys())) if (params.getAll(key).length !== 1) throw forbidden();
+  if (params.get('openid.ns') !== OPENID_NS || params.get('openid.mode') !== 'id_res' || params.get('openid.op_endpoint') !== STEAM_ENDPOINT || params.get('openid.return_to') !== steamCallback(state)) throw forbidden();
   const claimed = params.get('openid.claimed_id') || '';
-  if (claimed !== params.get('openid.identity') || !/^https:\/\/steamcommunity\.com\/openid\/id\/\d{17}$/.test(claimed)) throw new Error('Invalid Steam identity');
+  if (claimed !== params.get('openid.identity') || !/^https:\/\/steamcommunity\.com\/openid\/id\/\d{17}$/.test(claimed)) throw forbidden();
   const signed = new Set((params.get('openid.signed') || '').split(','));
-  for (const field of ['op_endpoint','return_to','response_nonce','claimed_id','identity']) if (!signed.has(field)) throw new Error('Unsigned Steam field');
+  for (const field of ['op_endpoint','return_to','response_nonce','claimed_id','identity']) if (!signed.has(field)) throw forbidden();
   const nonce = params.get('openid.response_nonce') || '';
   const timestamp = Date.parse(nonce.slice(0, 20));
-  if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > 5 * 60_000 || nonce.length > 255) throw new Error('Expired Steam response');
+  if (!Number.isFinite(timestamp) || Math.abs(now - timestamp) > 5 * 60_000 || nonce.length > 255) throw forbidden();
   return { steamId: claimed.split('/').pop()!, nonce };
 }
 export async function verifySteamAssertion(params: URLSearchParams) {
@@ -26,5 +27,5 @@ export async function verifySteamAssertion(params: URLSearchParams) {
   body.set('openid.mode', 'check_authentication');
   const response = await fetch(STEAM_ENDPOINT, { method: 'POST', body, redirect: 'error', signal: AbortSignal.timeout(10_000), cache: 'no-store' });
   const result = await response.text();
-  if (!response.ok || !result.split(/\r?\n/).includes('is_valid:true')) throw new Error('Steam verification failed');
+  if (!response.ok || !result.split(/\r?\n/).includes('is_valid:true')) throw forbidden();
 }
