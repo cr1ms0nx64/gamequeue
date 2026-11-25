@@ -1,5 +1,5 @@
 import { db } from '@/lib/db/pool';
-import { notFound } from '@/lib/errors';
+import { notFound } from '@/lib/app-error';
 import type { GamesUser } from '@/lib/types';
 export async function setVote(gameId: number, user: GamesUser, value: -1 | 1): Promise<{ score: number; voteCount: number; userVote: number }> {
  const client=await db.connect();

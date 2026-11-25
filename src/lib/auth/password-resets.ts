@@ -1,6 +1,6 @@
 import type { PoolClient } from 'pg';
 import { digest, randomToken } from '@/lib/passwords';
-import { notFound, validation } from '@/lib/errors';
+import { notFound, validation } from '@/lib/app-error';
 import { publicOrigin } from '@/lib/origins';
 export async function createPasswordReset(client: PoolClient, userId: number, actorId: number) {
   const row=(await client.query('SELECT password_hash FROM app_users WHERE id=$1 FOR UPDATE',[userId])).rows[0];

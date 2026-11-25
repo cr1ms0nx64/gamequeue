@@ -3,7 +3,7 @@ import type { GamesUser } from '@/lib/types';
 import { hashPassword } from '@/lib/passwords';
 import { transaction,admit } from '@/lib/auth/admission';
 import { assertNameAvailable } from '@/lib/names';
-import { validation } from '@/lib/errors';
+import { validation } from '@/lib/app-error';
 export function asUser(row: Record<string, unknown>): GamesUser {
   return { id: Number(row.id), username: String(row.username), displayName: String(row.display_name), email: null, role: row.role as GamesUser['role'] };
 }

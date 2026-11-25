@@ -5,7 +5,7 @@
 <p align="center"><strong>Your community. Your next game.</strong></p>
 <p align="center">A self-hosted game queue for discovering, suggesting and choosing what to play together.</p>
 <p align="center">
-  <img src="https://img.shields.io/badge/release-1.2.0-00c2e0" alt="Version 1.2.0">
+  <img src="https://img.shields.io/badge/release-1.3.0-00c2e0" alt="Version 1.3.0">
   <img src="https://img.shields.io/badge/Next.js-16-111111?logo=nextdotjs" alt="Next.js 16">
   <img src="https://img.shields.io/badge/PostgreSQL-17%2B-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-24b47e" alt="MIT license"></a>
@@ -105,7 +105,9 @@ Steam-only accounts continue authenticating through Steam. Local accounts can ch
 | `PUBLIC_ORIGIN` | Exact external origin, including scheme and port where applicable, without a path |
 | `SETUP_TOKEN` | Required for first administrator creation; remove after setup |
 | `STEAM_AUTH_ENABLED` | `true` enables Steam OpenID sign-in |
-| `TRUST_PROXY` | `false` by default; enable only behind a trusted proxy that overwrites forwarded client IP headers |
+| `TRUST_PROXY` | Standard `false`; hinter einem abgesicherten Reverse Proxy zwingend `true` |
+| `TRUSTED_PROXY_HOPS` | Standard `1`; vertrauenswürdige Client-Adresse von rechts in X-Forwarded-For |
+| `STEAM_REFRESH_DELAY_MS` | Standard `1500`, mindestens `1000`; Abstand im manuellen Steam-Aktualisierungsskript |
 | `IMPRINT_URL` | Optional URL for your installation's legal notice |
 | `PRIVACY_URL` | Optional URL for your installation's privacy policy |
 
@@ -143,7 +145,7 @@ npm run build
 npm start
 ```
 
-The build prepares Next.js standalone output, including public files and static assets. Set `HOSTNAME=127.0.0.1` and `PORT=3000` in your service environment when binding behind a local proxy. The app initializes its schemas automatically.
+The build prepares Next.js standalone output, including public files and static assets. Set `HOSTNAME=127.0.0.1` and `PORT=3000` in your service environment when binding behind a local proxy. Der Start wendet versionierte Migrationen vor dem Serverstart an; Anfragen führen kein DDL aus.
 
 `GET /api/health` returns HTTP 200 when the games database is available and HTTP 503 when it is unavailable.
 
@@ -157,26 +159,24 @@ npm run dev
 ```
 
 ```sh
+npm run lint
 npm test
 npm run typecheck
 npm run build
+npm run test:upgrade
 ```
 
 The integration suite requires a running app and a fresh disposable database. See [CONTRIBUTING.md](CONTRIBUTING.md). GitHub Actions provisions PostgreSQL 17 and runs the security tests, type checking, build and integration suite.
 
-### Validation for this release
+### Validierung für 1.3.0
 
-* Type checking and production standalone build passed.
-* Five security tests passed, covering password verification, local redirects, Steam assertions, provider verification failure handling and icon upload validation.
-* 77 integration checks passed against a disposable PostgreSQL database, covering setup races, registration policies, invitation reuse/expiry/revocation, access control, session revocation, rate limits, votes, comments and persistent site identity settings.
-* README screenshots use server-rendered application pages with synthetic community data. The static screenshot copy is not an interactive browser test of the full app.
-* A full sign-in with a real Steam account and a Docker image build were not run in the preparation environment. GitHub Actions runs the same automated checks for each push.
+Die CI prüft Linting ohne Warnungen, Runtime-Audit, Unit-Tests, TypeScript, Standalone-Build, node:test-Integration, Upgrade von 1.2.0 und einen separaten Docker-Build ohne Push. Die bisherigen 77 Integrationsprüfungen bleiben erhalten; mit den neuen Fällen sind es 239. Die Integration ist ein sequenzieller `node:test`-Ablauf, damit Setup und Folgeaktionen dieselbe Wegwerf-Installation verwenden.
 
-## Existing Hub installation
+Ein echter Steam-Login, der Betrieb hinter dem eigenen Reverse Proxy, die Wiederherstellung eines echten Backups und ein Compose-Start auf dem Zielsystem bleiben manuelle Prüfungen. Alle Details stehen im [Umsetzungsbericht](docs/IMPLEMENTATION-1.3.md).
 
-This repository contains a separate application. It does not change your running Hub or an existing Games deployment. Historical Hub identities are not automatically migrated. Standalone participation IDs have a `local:` prefix to prevent collisions with old numeric Hub user IDs.
+## Historische Hub-Daten
 
-If you want to retain old submissions, votes and comments, plan an explicit account mapping before moving data. See [Architecture](docs/ARCHITECTURE.md) and [Security](SECURITY.md).
+Es werden keine Hub-Identitäten geraten oder automatisch mit lokalen Konten verknüpft. Das Upgrade von 1.2.0 ordnet nur `local:N` einem vorhandenen lokalen Konto zu. Andere Einträge bleiben vollständig im geschützten Archiv `legacy_orphans` erhalten. Für die Übernahme einer alten Hub-Installation ist eine ausdrücklich geprüfte Zuordnung erforderlich. Siehe [Architektur](docs/ARCHITECTURE.md) und [Sicherheit](SECURITY.md).
 
 ## Project
 

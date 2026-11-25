@@ -4,7 +4,7 @@ export function proxyMisconfigured(): boolean { return state.gameQueueProxyWarni
 export function clientKey(request: Request): string {
   const forwarded = request.headers.get('x-forwarded-for');
   if (process.env.TRUST_PROXY !== 'true') {
-    if (forwarded && !state.gameQueueProxyWarning) {
+    if (forwarded !== null && !state.gameQueueProxyWarning) {
       state.gameQueueProxyWarning = true;
       console.warn('SICHERHEITSWARNUNG: X-Forwarded-For erkannt, aber TRUST_PROXY=false. Hinter einem Reverse Proxy muss TRUST_PROXY=true gesetzt und direkter Zugriff auf die App gesperrt werden.');
     }

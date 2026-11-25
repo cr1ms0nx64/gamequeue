@@ -1,8 +1,10 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { safeNext } from '@/lib/navigation';
 export function AuthForm({ mode, invite = '', next = '/', steam = false }: { mode: 'login' | 'register' | 'setup'; invite?: string; next?: string; steam?: boolean }) {
+  const router=useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -13,7 +15,7 @@ export function AuthForm({ mode, invite = '', next = '/', steam = false }: { mod
       const response = await fetch(`/api/auth/${mode}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...data, invite }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Anfrage fehlgeschlagen.');
-      window.location.href = mode === 'setup' ? '/admin' : safeNext(next);
+      router.replace(mode === 'setup' ? '/admin' : safeNext(next));router.refresh();
     } catch (error) { setError(error instanceof Error ? error.message : 'Anfrage fehlgeschlagen.'); setBusy(false); }
   }
   return <form className="login-form" onSubmit={submit}>

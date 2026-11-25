@@ -2,7 +2,7 @@ import { db } from '@/lib/db/pool';
 import { isoValue } from '@/lib/db/values';
 import type { QueryResultRow } from 'pg';
 import type { GameComment,GamesUser } from '@/lib/types';
-import { validation,forbidden,notFound } from '@/lib/errors';
+import { validation,forbidden,notFound } from '@/lib/app-error';
 export const COMMENT_PAGE_SIZE=25;
 function commentFromRow(row: QueryResultRow): GameComment {
   const cursor=Buffer.from(JSON.stringify({at:row.cursor_timestamp,id:String(row.id)})).toString('base64url');

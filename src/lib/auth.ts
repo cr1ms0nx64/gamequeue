@@ -1,4 +1,4 @@
-import { forbidden, unauthenticated } from '@/lib/errors';
+import { forbidden, unauthenticated } from '@/lib/app-error';
 import { cookies } from 'next/headers';
 import { db } from '@/lib/db';
 import { asUser } from '@/lib/accounts';

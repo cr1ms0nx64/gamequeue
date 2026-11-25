@@ -2,7 +2,7 @@ import type { QueryResultRow } from 'pg';
 import type { GameDetail,GameStatus,GameSummary,GamesUser,Submitter } from '@/lib/types';
 import { db } from '@/lib/db/pool';
 import { arrayValue,isoValue } from '@/lib/db/values';
-import { notFound } from '@/lib/errors';
+import { notFound } from '@/lib/app-error';
 function summaryFromRow(row: QueryResultRow): GameSummary {
   return {
     id: Number(row.id),

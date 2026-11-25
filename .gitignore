@@ -8,3 +8,7 @@ out/
 coverage/
 .DS_Store
 .openai/
+
+# Datenbank-Backups enthalten personenbezogene Daten.
+*.dump
+backups/

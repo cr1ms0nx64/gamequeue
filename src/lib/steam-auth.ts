@@ -1,4 +1,4 @@
-import { forbidden } from '@/lib/errors';
+import { forbidden } from '@/lib/app-error';
 import { publicOrigin } from '@/lib/origins';
 export const STEAM_ENDPOINT = 'https://steamcommunity.com/openid/login';
 export const OPENID_NS = 'http://specs.openid.net/auth/2.0';

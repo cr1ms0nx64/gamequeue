@@ -34,17 +34,28 @@ jobs:
       HOSTNAME: 127.0.0.1
       PORT: '3000'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+        id: install
+      - run: npm run lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - run: npm audit --omit=dev --audit-level=high
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: npm test
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: npm run typecheck
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: npm run build
+        id: build
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - run: npm run test:upgrade
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
       - name: Integration checks
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           npm start > /tmp/games-app.log 2>&1 &
           trap 'cat /tmp/games-app.log' EXIT
@@ -53,3 +64,12 @@ jobs:
             sleep 1
           done
           npm run test:integration
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - run: docker build --progress=plain -t gamequeue:ci .
+      - name: Standalone-CLI im Image prüfen
+        run: |
+          docker run --rm --entrypoint node gamequeue:ci --import ./scripts/register-paths.mjs --input-type=module -e "const {migrationFiles}=await import('./src/lib/db/migrate.ts'); if((await migrationFiles()).length!==3)throw new Error('Migrationen fehlen'); await import('./src/lib/steam.ts'); const {db}=await import('./src/lib/db.ts'); await db.end(); console.log('Standalone-Module und Migrationen vorhanden.');"
+

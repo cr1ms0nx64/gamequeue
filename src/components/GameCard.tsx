@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { CalendarDays, Gamepad2, UsersRound } from 'lucide-react';
 import { GameDeleteButton } from '@/components/GameDeleteButton';
@@ -18,7 +19,7 @@ export function GameCard({
     <article className="game-card">
       <div className="game-card-media">
         <Link className="game-card-image" href={`/game/${game.id}`}>
-          <img src={game.headerImage} alt="" loading="lazy" />
+          <Image unoptimized width={460} height={215} src={game.headerImage} alt="" loading="lazy" />
           <span className={`score-badge ${game.score < 0 ? 'score-negative' : ''}`}>
             {game.score > 0 ? `+${game.score}` : game.score}
           </span>

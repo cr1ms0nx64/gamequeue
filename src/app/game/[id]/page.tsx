@@ -1,3 +1,4 @@
+import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import {
@@ -46,7 +47,7 @@ export default async function GamePage({ params }: { params: Promise<{ id: strin
 
       <div className="game-detail-grid">
         <aside className="game-info-panel">
-          <img className="game-header-image" src={game.headerImage} alt={`${game.title} Titelbild`} />
+          <Image unoptimized width={920} height={430} className="game-header-image" src={game.headerImage} alt={`${game.title} Titelbild`} />
           <VotePanel
             gameId={game.id}
             initialScore={game.score}

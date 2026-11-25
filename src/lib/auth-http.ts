@@ -1,4 +1,4 @@
-import { forbidden } from '@/lib/errors';
+import { forbidden } from '@/lib/app-error';
 import { NextResponse } from 'next/server';
 import { newSession } from '@/lib/accounts';
 import { SESSION_COOKIE } from '@/lib/auth';

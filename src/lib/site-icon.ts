@@ -1,4 +1,4 @@
-import { validation } from '@/lib/errors';
+import { validation } from '@/lib/app-error';
 import sharp from 'sharp';
 export const MAX_ICON_BYTES = 512 * 1024;
 export const ICON_ERROR = 'Bitte ein gültiges PNG, JPEG oder WebP mit maximal 512 KB und 16 Megapixeln auswählen.';

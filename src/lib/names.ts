@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { conflict, validation } from '@/lib/errors';
+import { conflict, validation } from '@/lib/app-error';
 export const validName = (name: string) => name.trim().length > 0 && name.length <= 64 && !/[\p{Cc}\p{Cf}]/u.test(name);
 export async function assertNameAvailable(client: PoolClient, name: string, role: string, excludeId = 0) {
   if (!validName(name)) throw validation('Der Name darf keine Steuerzeichen enthalten und muss 1 bis 64 Zeichen lang sein.');

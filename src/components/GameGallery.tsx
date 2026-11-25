@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Expand } from 'lucide-react';
@@ -14,7 +15,7 @@ export function GameGallery({ images, title }: { images: string[]; title: string
   return (
     <section className="game-gallery" aria-label={`Screenshots von ${title}`}>
       <div className="gallery-stage">
-        <img src={gallery[index]} alt={`${title} Screenshot ${index + 1}`} />
+        <Image unoptimized width={1920} height={1080} src={gallery[index]} alt={`${title} Screenshot ${index + 1}`} />
         {gallery.length > 1 ? (
           <>
             <button className="gallery-arrow gallery-previous" onClick={previous} aria-label="Vorheriges Bild" type="button"><ChevronLeft /></button>
@@ -36,7 +37,7 @@ export function GameGallery({ images, title }: { images: string[]; title: string
               aria-label={`Screenshot ${imageIndex + 1} anzeigen`}
               type="button"
             >
-              <img src={image} alt="" loading="lazy" />
+              <Image unoptimized width={1920} height={1080} src={image} alt="" loading="lazy" />
             </button>
           ))}
         </div>

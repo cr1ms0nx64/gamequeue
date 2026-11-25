@@ -1,4 +1,4 @@
-import { AppError, upstream } from '@/lib/errors';
+import { AppError, upstream } from '@/lib/app-error';
 import type { ImportedGame } from '@/lib/db';
 
 type SteamCategory = { id?: number; description?: string };

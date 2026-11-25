@@ -1,7 +1,7 @@
 import { db } from '@/lib/db/pool';
 import type { PoolClient } from 'pg';
 import { digest } from '@/lib/passwords';
-import { validation } from '@/lib/errors';
+import { validation } from '@/lib/app-error';
 export async function transaction<T>(run: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await db.connect();
   try {

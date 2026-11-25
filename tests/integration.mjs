@@ -1,3 +1,4 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 // Requires a fresh, disposable database and a running app pointing at that database.
@@ -17,6 +18,7 @@ async function request(path, data, cookie = '', expected = 200, requestOrigin = 
   return { ...result, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
 }
 const credentials = { username: 'testadmin', password: 'Integration-test-only-123!' };
+test('standalone security, community and recovery flows retain every integration check',{timeout:120000},async()=>{
 try {
   const health = await fetch(base + '/api/health'); assert.equal(health.status, 200); checks++;
   const table = await query("SELECT to_regclass('public.app_users') AS name");
@@ -235,3 +237,5 @@ try {
   await request('/api/auth/login', credentials, '', 429, origin, '192.0.2.100');
   console.log(`Passed ${checks} integration checks against a disposable PostgreSQL database.`);
 } finally { await pool.end(); await gamesRepo.db.end(); }
+
+});
