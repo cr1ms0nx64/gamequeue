@@ -21,6 +21,7 @@ export function ensureAccounts() {
     CREATE TABLE IF NOT EXISTS app_invites (token_hash TEXT PRIMARY KEY, created_by INTEGER NOT NULL REFERENCES app_users(id), expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ, revoked BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
     CREATE TABLE IF NOT EXISTS app_auth_limits (key TEXT PRIMARY KEY, attempts INTEGER NOT NULL, expires_at TIMESTAMPTZ NOT NULL);
     CREATE TABLE IF NOT EXISTS app_steam_states (token_hash TEXT PRIMARY KEY, invite TEXT NOT NULL DEFAULT '', expires_at TIMESTAMPTZ NOT NULL);
+    CREATE TABLE IF NOT EXISTS app_password_resets (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES app_users(id) ON DELETE CASCADE, created_by INTEGER REFERENCES app_users(id) ON DELETE SET NULL, expires_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ);
     CREATE TABLE IF NOT EXISTS app_steam_nonces (nonce TEXT PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL);
   `).then(() => {}).catch(error => { ready = undefined; throw error; });
 }

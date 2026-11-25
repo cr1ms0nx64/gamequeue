@@ -114,6 +114,27 @@ try {
   await query("DELETE FROM app_auth_limits WHERE key IS NOT NULL");
   for (let i=0; i<10; i++) await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 401);
   await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 429);
+  // Password reset tokens are hashed, expiring, replacing and single-use.
+  await query('DELETE FROM app_auth_limits');
+  const recoveryUser=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  const recoveryId=(await query("SELECT id FROM app_users WHERE username='openuser'")).rows[0].id;
+  await request('/api/admin',{action:'reset',id:recoveryId},recoveryUser.cookie,403);
+  const steamOnly=(await query("INSERT INTO app_users(username,display_name,steam_id) VALUES('steam_resetfixture','Steam Reset Fixture','76561198000000009') RETURNING id")).rows[0].id;
+  await request('/api/admin',{action:'reset',id:steamOnly},admin.cookie,400);
+  const expiredReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const expiredResetToken=new URL(expiredReset.resetUrl).searchParams.get('token');
+  await query("UPDATE app_password_resets SET expires_at=NOW()-INTERVAL '1 second' WHERE token_hash=$1",[createHash('sha256').update(expiredResetToken).digest('hex')]);
+  await request('/api/auth/reset',{token:expiredResetToken,password:'Reset-password-only-1234'},'',400);
+  const firstReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const secondReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const firstResetToken=new URL(firstReset.resetUrl).searchParams.get('token'),secondResetToken=new URL(secondReset.resetUrl).searchParams.get('token');
+  assert.equal((await query('SELECT token_hash FROM app_password_resets WHERE token_hash=$1',[secondResetToken])).rowCount,0); checks++;
+  await request('/api/auth/reset',{token:firstResetToken,password:'Reset-password-only-1234'},'',400);
+  await request('/api/auth/reset',{token:secondResetToken,password:'Reset-password-only-1234'});
+  await request('/api/auth/reset',{token:secondResetToken,password:'Other-password-only-1234'},'',400);
+  assert.equal((await query('SELECT 1 FROM app_sessions WHERE user_id=$1',[recoveryId])).rowCount,0);checks++;
+  await request('/api/account',{displayName:'No session'},recoveryUser.cookie,401);
+  await request('/api/auth/login',{username:'openuser',password:'Reset-password-only-1234'});
   await request('/api/games',{steamUrl:'9999999999'},admin.cookie,400);
   await request('/api/games/2147483647/vote',{value:1},admin.cookie,404);
   // Login failures from one client must not lock out another client.

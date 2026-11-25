@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "setup:env": "node scripts/setup-env.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
-    "test:integration": "node tests/integration.mjs"
+    "test:integration": "node tests/integration.mjs",
+    "reset-admin": "node --env-file-if-exists=.env.local scripts/reset-admin.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

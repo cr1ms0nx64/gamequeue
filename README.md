@@ -194,3 +194,16 @@ Steam authentication references: [Steamworks authentication documentation](https
 Hinter einem Reverse Proxy **muss `TRUST_PROXY=true` gesetzt werden**. Der Proxy muss `X-Forwarded-For` überschreiben oder seine tatsächlich beobachtete Client-IP rechts anhängen. Direkter Zugriff auf die App muss gesperrt sein. `TRUSTED_PROXY_HOPS=1` liest den rechten Eintrag; nur bei einer kontrollierten mehrstufigen Proxy-Kette erhöhen. Ungültige Adressen ergeben `unknown`. Ohne vertrauenswürdigen Proxy ist keine Client-IP aus Fetch-Requests verfügbar; dann wird ein gemeinsamer Zähler verwendet. Erkannte Fehlkonfigurationen erzeugen eine Prozesswarnung und einen Admin-Hinweis.
 
 Login zählt nur fehlgeschlagene Passwortprüfungen: 10 Fehler pro Benutzername und IP, 50 pro Benutzername und 60 pro IP innerhalb von 15 Minuten. Eine erfolgreiche Anmeldung setzt diese Fehlerzähler zurück. Registrierung, Setup und Steam-Start zählen weiterhin jeden Versuch.
+
+## Passwort vergessen
+
+Ein Admin kann unter Administration für lokale Konten einen einmaligen Link erstellen. Er gilt 24 Stunden, ersetzt ältere Links und beendet bei Verwendung alle Sitzungen. Der Link wird nur beim Erstellen angezeigt und muss vertraulich weitergegeben werden. Steam-Konten verwenden die Wiederherstellung bei Steam.
+
+Notfallweg für den einzigen lokalen Admin (direkter Datenbankzugriff erforderlich):
+
+```sh
+npm run reset-admin -- benutzername
+docker compose exec app node scripts/reset-admin.mjs benutzername
+```
+
+`DATABASE_URL` und `PUBLIC_ORIGIN` müssen gesetzt sein. Der ausgegebene Link ist ein Geheimnis und gehört nicht in öffentliche Logs.
