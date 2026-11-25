@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
@@ -12,7 +13,7 @@ import type { GamesUser } from '@/lib/types';
 import { initials } from '@/lib/format';
 
 
-export function HeaderClient({ user, branding }: { user: GamesUser | null; branding: SiteBranding }) {
+function HeaderContent({ user, branding }: { user: GamesUser | null; branding: SiteBranding }) {
   const pathname = usePathname();
   const params = useSearchParams();
   const router = useRouter();
@@ -23,10 +24,6 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
   const [query, setQuery] = useState(params.get('q') || '');
 
   useEffect(() => {
-    setMenuOpen(false);
-  }, [pathname, params.toString()]);
-
-  useEffect(() => {
     const media = window.matchMedia('(max-width: 980px)');
     const update = () => { setMobile(media.matches); if (!media.matches) setMenuOpen(false); };
     update(); media.addEventListener('change', update);
@@ -35,6 +32,7 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
 
   useEffect(() => {
     if (!menuOpen || !mobile) return;
+    const opener=triggerRef.current;
     const background = document.querySelector<HTMLElement>('.app-shell');
     const previousInert = background?.inert;
     if (background) background.inert = true;
@@ -51,7 +49,7 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
     return () => {
       document.removeEventListener('keydown', keyboard);
       if (background) background.inert = previousInert ?? false;
-      triggerRef.current?.focus({ preventScroll: true });
+      opener?.focus({ preventScroll: true });
     };
   }, [menuOpen, mobile]);
 
@@ -69,7 +67,7 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' }).catch(() => null);
-    window.location.href = '/';
+    router.replace('/');router.refresh();
   }
 
   return (
@@ -77,7 +75,7 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
       <header data-platform-mobile-header className="games-mobile-header">
         <Link className="games-brand games-brand--compact" href="/" aria-label={`${branding.siteName} Startseite`}>
           <span className="games-brand-icon">
-            <img src={branding.iconUrl} alt="" />
+            <Image unoptimized width={32} height={32} src={branding.iconUrl} alt="" />
           </span>
           <span className="games-brand-copy">
             <span className="site-name">{branding.siteName}</span>
@@ -114,7 +112,7 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
         <div data-platform-brand className="games-sidebar-brand">
           <Link className="games-brand" href="/" aria-label={`${branding.siteName} Startseite`}>
             <span className="games-brand-icon">
-              <img src={branding.iconUrl} alt="" />
+              <Image unoptimized width={32} height={32} src={branding.iconUrl} alt="" />
             </span>
             <span className="games-brand-copy">
               <span className="site-name">{branding.siteName}</span>
@@ -226,9 +224,14 @@ export function HeaderClient({ user, branding }: { user: GamesUser | null; brand
         <Link href="/" aria-current={pathname === '/' ? 'page' : undefined}><House /><span>Start</span></Link>
         <Link href="/choice" aria-current={pathname === '/choice' ? 'page' : undefined}><Crown /><span>Choice</span></Link>
         <Link href={user ? '/submit' : '/login?next=/submit'} aria-current={pathname === '/submit' ? 'page' : undefined}><Plus /><span>Vorschlagen</span></Link>
-        <button type="button" aria-label="Navigation öffnen" onClick={() => setMenuOpen(true)}><img src="/platform-icons/menu.svg" alt="" width="21" height="21"/><span>Menü</span></button>
+        <button type="button" aria-label="Navigation öffnen" onClick={() => setMenuOpen(true)}><Image unoptimized src="/platform-icons/menu.svg" alt="" width="21" height="21"/><span>Menü</span></button>
       </nav>
     </>
   );
 }
 
+
+export function HeaderClient(props:{user:GamesUser|null;branding:SiteBranding}) {
+  const pathname=usePathname(),params=useSearchParams();
+  return <HeaderContent key={`${pathname}?${params.toString()}`} {...props}/>;
+}

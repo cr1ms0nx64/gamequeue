@@ -5,7 +5,7 @@
 <p align="center"><strong>Your community. Your next game.</strong></p>
 <p align="center">A self-hosted game queue for discovering, suggesting and choosing what to play together.</p>
 <p align="center">
-  <img src="https://img.shields.io/badge/release-1.2.0-00c2e0" alt="Version 1.2.0">
+  <img src="https://img.shields.io/badge/release-1.3.0-00c2e0" alt="Version 1.3.0">
   <img src="https://img.shields.io/badge/Next.js-16-111111?logo=nextdotjs" alt="Next.js 16">
   <img src="https://img.shields.io/badge/PostgreSQL-17%2B-4169e1?logo=postgresql&logoColor=white" alt="PostgreSQL 17 or newer">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-24b47e" alt="MIT license"></a>
@@ -105,7 +105,9 @@ Steam-only accounts continue authenticating through Steam. Local accounts can ch
 | `PUBLIC_ORIGIN` | Exact external origin, including scheme and port where applicable, without a path |
 | `SETUP_TOKEN` | Required for first administrator creation; remove after setup |
 | `STEAM_AUTH_ENABLED` | `true` enables Steam OpenID sign-in |
-| `TRUST_PROXY` | `false` by default; enable only behind a trusted proxy that overwrites forwarded client IP headers |
+| `TRUST_PROXY` | Standard `false`; hinter einem abgesicherten Reverse Proxy zwingend `true` |
+| `TRUSTED_PROXY_HOPS` | Standard `1`; vertrauenswürdige Client-Adresse von rechts in X-Forwarded-For |
+| `STEAM_REFRESH_DELAY_MS` | Standard `1500`, mindestens `1000`; Abstand im manuellen Steam-Aktualisierungsskript |
 | `IMPRINT_URL` | Optional URL for your installation's legal notice |
 | `PRIVACY_URL` | Optional URL for your installation's privacy policy |
 
@@ -143,7 +145,7 @@ npm run build
 npm start
 ```
 
-The build prepares Next.js standalone output, including public files and static assets. Set `HOSTNAME=127.0.0.1` and `PORT=3000` in your service environment when binding behind a local proxy. The app initializes its schemas automatically.
+The build prepares Next.js standalone output, including public files and static assets. Set `HOSTNAME=127.0.0.1` and `PORT=3000` in your service environment when binding behind a local proxy. Der Start wendet versionierte Migrationen vor dem Serverstart an; Anfragen führen kein DDL aus.
 
 `GET /api/health` returns HTTP 200 when the games database is available and HTTP 503 when it is unavailable.
 
@@ -157,26 +159,24 @@ npm run dev
 ```
 
 ```sh
+npm run lint
 npm test
 npm run typecheck
 npm run build
+npm run test:upgrade
 ```
 
 The integration suite requires a running app and a fresh disposable database. See [CONTRIBUTING.md](CONTRIBUTING.md). GitHub Actions provisions PostgreSQL 17 and runs the security tests, type checking, build and integration suite.
 
-### Validation for this release
+### Validierung für 1.3.0
 
-* Type checking and production standalone build passed.
-* Five security tests passed, covering password verification, local redirects, Steam assertions, provider verification failure handling and icon upload validation.
-* 77 integration checks passed against a disposable PostgreSQL database, covering setup races, registration policies, invitation reuse/expiry/revocation, access control, session revocation, rate limits, votes, comments and persistent site identity settings.
-* README screenshots use server-rendered application pages with synthetic community data. The static screenshot copy is not an interactive browser test of the full app.
-* A full sign-in with a real Steam account and a Docker image build were not run in the preparation environment. GitHub Actions runs the same automated checks for each push.
+Die CI prüft Linting ohne Warnungen, Runtime-Audit, Unit-Tests, TypeScript, Standalone-Build, node:test-Integration, Upgrade von 1.2.0 und einen separaten Docker-Build ohne Push. Die bisherigen 77 Integrationsprüfungen bleiben erhalten; mit den neuen Fällen sind es 239. Die Integration ist ein sequenzieller `node:test`-Ablauf, damit Setup und Folgeaktionen dieselbe Wegwerf-Installation verwenden.
 
-## Existing Hub installation
+Ein echter Steam-Login, der Betrieb hinter dem eigenen Reverse Proxy, die Wiederherstellung eines echten Backups und ein Compose-Start auf dem Zielsystem bleiben manuelle Prüfungen. Alle Details stehen im [Umsetzungsbericht](docs/IMPLEMENTATION-1.3.md).
 
-This repository contains a separate application. It does not change your running Hub or an existing Games deployment. Historical Hub identities are not automatically migrated. Standalone participation IDs have a `local:` prefix to prevent collisions with old numeric Hub user IDs.
+## Historische Hub-Daten
 
-If you want to retain old submissions, votes and comments, plan an explicit account mapping before moving data. See [Architecture](docs/ARCHITECTURE.md) and [Security](SECURITY.md).
+Es werden keine Hub-Identitäten geraten oder automatisch mit lokalen Konten verknüpft. Das Upgrade von 1.2.0 ordnet nur `local:N` einem vorhandenen lokalen Konto zu. Andere Einträge bleiben vollständig im geschützten Archiv `legacy_orphans` erhalten. Für die Übernahme einer alten Hub-Installation ist eine ausdrücklich geprüfte Zuordnung erforderlich. Siehe [Architektur](docs/ARCHITECTURE.md) und [Sicherheit](SECURITY.md).
 
 ## Project
 
@@ -188,3 +188,83 @@ If you want to retain old submissions, votes and comments, plan an explicit acco
 Source code is available under the [MIT License](LICENSE). Steam and game artwork belong to their respective owners; the code license does not grant rights to third-party artwork.
 
 Steam authentication references: [Steamworks authentication documentation](https://partner.steamgames.com/doc/features/auth) and [OpenID Authentication 2.0](https://openid.net/specs/openid-authentication-2_0.html).
+
+## Reverse Proxy und Login-Limits
+
+Hinter einem Reverse Proxy **muss `TRUST_PROXY=true` gesetzt werden**. Der Proxy muss `X-Forwarded-For` überschreiben oder seine tatsächlich beobachtete Client-IP rechts anhängen. Direkter Zugriff auf die App muss gesperrt sein. `TRUSTED_PROXY_HOPS=1` liest den rechten Eintrag; nur bei einer kontrollierten mehrstufigen Proxy-Kette erhöhen. Ungültige Adressen ergeben `unknown`. Ohne vertrauenswürdigen Proxy ist keine Client-IP aus Fetch-Requests verfügbar; dann wird ein gemeinsamer Zähler verwendet. Erkannte Fehlkonfigurationen erzeugen eine Prozesswarnung und einen Admin-Hinweis.
+
+Login zählt nur fehlgeschlagene Passwortprüfungen: 10 Fehler pro Benutzername und IP, 50 pro Benutzername und 60 pro IP innerhalb von 15 Minuten. Eine erfolgreiche Anmeldung setzt diese Fehlerzähler zurück. Registrierung, Setup und Steam-Start zählen weiterhin jeden Versuch.
+
+## Passwort vergessen
+
+Ein Admin kann unter Administration für lokale Konten einen einmaligen Link erstellen. Er gilt 24 Stunden, ersetzt ältere Links und beendet bei Verwendung alle Sitzungen. Der Link wird nur beim Erstellen angezeigt und muss vertraulich weitergegeben werden. Steam-Konten verwenden die Wiederherstellung bei Steam.
+
+Notfallweg für den einzigen lokalen Admin (direkter Datenbankzugriff erforderlich):
+
+```sh
+npm run reset-admin -- benutzername
+docker compose exec app node scripts/reset-admin.mjs benutzername
+```
+
+`DATABASE_URL` und `PUBLIC_ORIGIN` müssen gesetzt sein. Der ausgegebene Link ist ein Geheimnis und gehört nicht in öffentliche Logs.
+
+## Steam-Metadaten aktualisieren
+
+Admins können Daten auf der Spielseite erneut von Steam laden. Status, Bewertungen und Vorschläge bleiben dabei erhalten. Für Cron steht `npm run refresh-steam` zur Verfügung. Alle Spiele werden nacheinander aktualisiert; zwischen Anfragen liegen standardmäßig 1500 ms (`STEAM_REFRESH_DELAY_MS`, mindestens 1000). Der Webserver startet keinen Hintergrundprozess. Für dieses Skript gilt ebenfalls Node.js 24 und eine gesetzte `DATABASE_URL`.
+
+## Upgrade von 1.2.0 und Migrationen
+
+Vor dem Upgrade die App stoppen und die Datenbank sichern. Die alte App darf während der Schemaumstellung nicht weiterlaufen. Beispiel für das Compose-Setup:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_dump -U games -d games -Fc > gamequeue-before-1.3.dump
+# Anschließend den neuen Quellstand auschecken.
+docker compose build app
+docker compose up -d app
+docker compose logs app
+```
+
+Der Start führt Migrationen vor `server.js` aus. Jede SQL-Datei hat eine gespeicherte SHA-256-Prüfsumme, läuft unter einer Datenbanksperre und in einer eigenen Transaktion. Geänderte bereits angewendete Migrationen brechen den Start ab. SQL-Dateien nach der Anwendung nicht bearbeiten. Bei manueller Installation: `npm ci`, `npm run migrate`, `npm run build`, `npm start`. `npm run dev` migriert ebenfalls vor dem Start.
+
+| Migration | Wirkung |
+| --- | --- |
+| 0001 | Baseline des Schemas 1.2.0, auch auf bestehenden Tabellen anwendbar |
+| 0002 | `local:N` wird mit vorhandenen Konten verknüpft; Fremdschlüssel ersetzen Text-IDs und Namenskopien |
+| 0003 | Passwort-Reset, `coming_soon` und eindeutige Anzeigenamen |
+
+Nicht zuordenbare Votes, Kommentare und Vorschläge werden vollständig als JSON in `legacy_orphans` archiviert. Spiele bleiben erhalten, unbekannte Ersteller werden `NULL`. Doppelte Alt-Referenzen werden ebenfalls archiviert; die kanonische Referenz bleibt aktiv. Bei kollidierenden oder ungültigen Anzeigenamen wird das alte Profil archiviert und ein eindeutiger Ersatzname vergeben. Benutzernamen, Passwörter und Anmeldungen bleiben erhalten. Das Migrationslog nennt die Anzahl archivierter Einträge.
+
+```sql
+SELECT source_table, reason, COUNT(*) FROM legacy_orphans GROUP BY source_table, reason;
+SELECT id, source_table, legacy_key, data FROM legacy_orphans ORDER BY id;
+```
+
+Die archivierten Daten enthalten personenbezogene Informationen und gegebenenfalls Passwort-Hashes alter Profile. Nicht öffentlich weitergeben. Eine Zuordnung ehemaliger Hub-IDs wird bewusst nicht geraten. Der Upgrade-Test (`npm run test:upgrade`) erstellt ausschließlich bei `TEST_DATABASE_DISPOSABLE=1` eine eigene temporäre Datenbank und prüft Erhalt, Archivierung, erneuten Start und Prüfsummenfehler.
+
+## Backup und Wiederherstellung
+
+Regelmäßig Datenbank und `.env.local` getrennt und geschützt sichern. Ein vollständiges Backup enthält Benutzerprofile, Passwort-Hashes, Tokens als Hashes und gegebenenfalls historische Archive. Für einen konsistenten Wiederherstellungspunkt die App anhalten:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_dump -U games -d games -Fc > gamequeue.dump
+docker compose up -d app
+```
+
+Zur Wiederherstellung eine eigene Datenbank bzw. ein leeres PostgreSQL-Volume verwenden. Der folgende Restore ersetzt vorhandene Daten in der Zieldatenbank:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_restore -U games -d games --clean --if-exists --no-owner --exit-on-error < gamequeue.dump
+docker compose up -d app
+docker compose ps
+```
+
+Die App prüft beim Start die Migrationen und meldet Datenbank-/Migrationsprobleme über `/api/health`. Docker und Compose verwenden diesen Endpunkt. Healthcheck-Fehler im App-Log prüfen, bevor weitere Updates erfolgen.
+
+## Mein Konto und Datenschutz
+
+Unter „Mein Konto“ lassen sich Profil und eigene Community-Daten als JSON exportieren. Eine Kontolöschung benötigt den exakten Benutzernamen und bei lokalen Konten das aktuelle Passwort. Sitzungen, Votes, Kommentare, Vorschläge und zuordenbare archivierte Einträge werden gelöscht; Spiele bleiben mit unbekanntem Ersteller bestehen. Der letzte aktive Administrator kann nicht gelöscht werden.
+
+HTML erhält eine neue CSP-Nonce pro Anfrage; produktives `script-src` enthält kein `unsafe-inline`. Styles behalten zur Wahrung des bestehenden Designs ihre Inline-Freigabe. HTML darf am Reverse Proxy nicht zwischengespeichert werden. Bei HTTPS-PUBLIC_ORIGIN wird HSTS gesetzt.

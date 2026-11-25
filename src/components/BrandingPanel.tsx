@@ -1,4 +1,5 @@
 'use client';
+import Image from 'next/image';
 import { useState, type FormEvent, type ChangeEvent } from 'react';
 import type { SiteBranding } from '@/lib/branding';
 export function BrandingPanel({ branding }: { branding: SiteBranding }) {
@@ -26,7 +27,7 @@ export function BrandingPanel({ branding }: { branding: SiteBranding }) {
   }
   return <article className="admin-card"><h2>Name und Seitenicon</h2><p>Passe den Namen und das Icon deiner Community an. Das Icon erscheint in der Navigation, im Browser Tab und als Lesezeichen.</p><form onSubmit={save}>
     <label>Seitenname<input name="siteName" value={name} onChange={event=>setName(event.target.value)} minLength={1} maxLength={64} required disabled={busy} /></label>
-    <div className="branding-preview"><img src={reset ? '/icon.png' : icon || branding.iconUrl} width="64" height="64" alt="Vorschau des Seitenicons" /><span>{name || 'GameQueue'}</span></div>
+    <div className="branding-preview"><Image unoptimized src={reset ? '/icon.png' : icon || branding.iconUrl} width="64" height="64" alt="Vorschau des Seitenicons" /><span>{name || 'GameQueue'}</span></div>
     <label>Neues Seitenicon<input name="siteIcon" type="file" accept="image/png,image/jpeg,image/webp" onChange={selectFile} disabled={busy} /></label>
     <p>PNG, JPEG oder WebP, maximal 512 KB. Ein quadratisches Bild funktioniert am besten.</p>
     <div className="branding-actions"><button type="button" disabled={busy} onClick={()=>{setIcon(null);setReset(true);}}>Standardicon verwenden</button><button className="button button-primary" disabled={busy}>{busy ? 'Wird gespeichert' : 'Darstellung speichern'}</button></div>

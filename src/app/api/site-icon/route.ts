@@ -1,10 +1,10 @@
+import { toResponse } from '@/lib/errors';
 import { NextResponse } from 'next/server';
-import { ensureAccounts } from '@/lib/accounts';
 import { db } from '@/lib/db';
 import { publicOrigin } from '@/lib/origins';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
-  await ensureAccounts();
+  try {
   const row = (await db.query('SELECT site_icon,site_icon_hash FROM app_settings WHERE id=TRUE')).rows[0];
   if (!row.site_icon) {
     const response = NextResponse.redirect(`${publicOrigin()}/icon.png`);
@@ -17,4 +17,5 @@ export async function GET(request: Request) {
     'Cache-Control': currentVersion ? 'public, max-age=31536000, immutable' : 'no-store',
     'ETag': `"${row.site_icon_hash}"`
   } });
+  } catch (error) { return toResponse(error); }
 }

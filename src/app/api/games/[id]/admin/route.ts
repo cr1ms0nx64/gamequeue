@@ -1,3 +1,8 @@
+import { authLimit } from '@/lib/accounts';
+import { fetchSteamGame } from '@/lib/steam';
+import { getGame, refreshGame } from '@/lib/db';
+import { notFound, positiveId, rateLimited } from '@/lib/errors';
+import { toResponse } from '@/lib/errors';
 import { sameOrigin } from '@/lib/auth-http';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
@@ -20,11 +25,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
     await updateGame(gameId, parsed.data.status, parsed.data.ownerScore);
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    const status = message === 'UNAUTHENTICATED' ? 401 : message === 'FORBIDDEN' ? 403 : 500;
-    return NextResponse.json({ ok: false, error: status === 403 ? 'Keine Berechtigung.' : 'Änderung fehlgeschlagen.' }, { status });
-  }
+  } catch (error) { return toResponse(error); }
 }
 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -37,10 +38,12 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     }
     await deleteGame(gameId);
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : '';
-    const status = message === 'UNAUTHENTICATED' ? 401 : message === 'FORBIDDEN' ? 403 : 500;
-    return NextResponse.json({ ok: false, error: status === 403 ? 'Keine Berechtigung.' : 'Löschen fehlgeschlagen.' }, { status });
-  }
+  } catch (error) { return toResponse(error); }
 }
 
+export async function POST(request:Request,{params}:{params:Promise<{id:string}>}) {
+  try {sameOrigin(request);const admin=await requireAdmin();if(!await authLimit('steam-refresh',String(admin.id),20,3600))throw rateLimited();
+    const id=positiveId((await params).id),game=await getGame(id);if(!game)throw notFound();
+    await refreshGame(id,await fetchSteamGame(game.steamAppId));return NextResponse.json({ok:true});
+  }catch(error){return toResponse(error);}
+}

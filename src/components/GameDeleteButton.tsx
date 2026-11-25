@@ -8,11 +8,11 @@ export function GameDeleteButton({ gameId, title, compact = false, redirectTo }:
   const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const dialog = useRef<HTMLDialogElement>(null), trigger = useRef<HTMLButtonElement>(null), cancel = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const node = dialog.current;
+    const node = dialog.current, opener=trigger.current;
     if (!open || !node) return;
     node.showModal();
     cancel.current?.focus();
-    return () => { node.close(); trigger.current?.focus({ preventScroll: true }); };
+    return () => { node.close(); opener?.focus({ preventScroll: true }); };
   }, [open]);
   async function remove() {
     if (busy) return;

@@ -1,3 +1,4 @@
+import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Pool } from 'pg';
 // Requires a fresh, disposable database and a running app pointing at that database.
@@ -8,14 +9,16 @@ const setupToken = process.env.TEST_SETUP_TOKEN;
 if (!base || !origin || !setupToken || !process.env.DATABASE_URL || !process.env.TEST_DATABASE_DISPOSABLE) throw new Error('Set TEST_BASE_URL, PUBLIC_ORIGIN, TEST_SETUP_TOKEN, DATABASE_URL and TEST_DATABASE_DISPOSABLE=1. Use a fresh test database.');
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const query = (sql, args) => pool.query(sql, args);
+const gamesRepo=await import('../src/lib/db.ts');
 let checks = 0;
-async function request(path, data, cookie = '', expected = 200, requestOrigin = origin) {
-  const response = await fetch(base + path, { method: 'POST', headers: { 'content-type': 'application/json', origin: requestOrigin, cookie }, body: JSON.stringify(data), redirect: 'manual' });
+async function request(path, data, cookie = '', expected = 200, requestOrigin = origin, ip = '198.51.100.9', method = 'POST') {
+  const response = await fetch(base + path, { method, headers: { 'content-type': 'application/json', origin: requestOrigin, cookie, 'x-forwarded-for': ip }, body: JSON.stringify(data), redirect: 'manual' });
   const result = await response.json();
   assert.equal(response.status, expected, `${path}: ${JSON.stringify(result)}`); checks++;
   return { ...result, cookie: response.headers.get('set-cookie')?.split(';')[0] || '' };
 }
 const credentials = { username: 'testadmin', password: 'Integration-test-only-123!' };
+test('standalone security, community and recovery flows retain every integration check',{timeout:120000},async()=>{
 try {
   const health = await fetch(base + '/api/health'); assert.equal(health.status, 200); checks++;
   const table = await query("SELECT to_regclass('public.app_users') AS name");
@@ -99,11 +102,11 @@ try {
   const races = await Promise.all(['raceone','racetwo'].map(username => fetch(base + '/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ username, password: credentials.password, invite: raceToken }) })));
   assert.deepEqual(races.map(response => response.status).sort(), [200,400]); checks++;
   // Existing community features use the standalone identity namespace.
-  const game = (await query("INSERT INTO games(steam_app_id,slug,title,header_image,created_by_user_id) VALUES(620,'integration-portal','Portal 2','https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/620/header.jpg','fixture') RETURNING id")).rows[0].id;
+  const game = (await query("INSERT INTO games(steam_app_id,slug,title,header_image,created_by) VALUES(620,'integration-portal','Portal 2','https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/620/header.jpg',1) RETURNING id")).rows[0].id;
   const vote = await request(`/api/games/${game}/vote`, { value: 1 }, admin.cookie);
   assert.equal(vote.score ?? vote.vote?.score, 1); checks++;
   await request(`/api/games/${game}/comments`, { body: 'Standalone community comment' }, admin.cookie);
-  assert.equal((await query('SELECT user_id FROM votes WHERE game_id=$1',[game])).rows[0].user_id, 'local:1'); checks++;
+  assert.equal((await query('SELECT user_ref FROM votes WHERE game_id=$1',[game])).rows[0].user_ref, 1); checks++;
   const foreignVote = await fetch(base + `/api/games/${game}/vote`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.test', cookie: admin.cookie }, body: JSON.stringify({ value: 1 }) });
   assert.notEqual(foreignVote.status, 200); checks++;
   // Steam start uses the provider and stores browser-bound state, while forged callbacks fail.
@@ -114,5 +117,125 @@ try {
   await query("DELETE FROM app_auth_limits WHERE key IS NOT NULL");
   for (let i=0; i<10; i++) await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 401);
   await request('/api/auth/login', { username: 'unknown', password: 'wrong' }, '', 429);
+  // Moderation, cursor ties, name namespace, disabled votes and literal search.
+  await query('DELETE FROM app_auth_limits');
+  let author=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  const authorId=(await query("SELECT id FROM app_users WHERE username='openuser'")).rows[0].id;
+  const own=await request(`/api/games/${game}/comments`,{body:'Author comment'},author.cookie);
+  const originalComment=(await query('SELECT id FROM comments WHERE game_id=$1 ORDER BY id LIMIT 1',[game])).rows[0].id;
+  await request(`/api/games/${game}/comments/${originalComment}`,{},author.cookie,403,origin,'198.51.100.9','DELETE');
+  await request(`/api/games/${game}/comments/${own.comment.id}`,{},admin.cookie,200,origin,'198.51.100.9','DELETE');
+  const another=await request(`/api/games/${game}/comments`,{body:'Author deletes own'},author.cookie);
+  await request(`/api/games/${game}/comments/${another.comment.id}`,{},author.cookie,200,origin,'198.51.100.9','DELETE');
+  await query("INSERT INTO comments(game_id,user_ref,body,created_at) SELECT $1,$2,'Page '||n,'2020-01-01T00:00:00.000123Z'::timestamptz FROM generate_series(1,30) n",[game,authorId]);
+  let page=await (await fetch(base+`/api/games/${game}/comments`)).json();const ids=page.comments.map(item=>item.id);
+  assert.equal(ids.length,25);checks++;
+  page=await (await fetch(base+`/api/games/${game}/comments?cursor=${encodeURIComponent(page.nextCursor)}`)).json();
+  const allIds=[...ids,...page.comments.map(item=>item.id)];assert.equal(new Set(allIds).size,31);checks++;
+  assert.equal(page.nextCursor,null);checks++;
+  await request('/api/account',{displayName:credentials.username.toUpperCase()},author.cookie,409);
+  await request('/api/account',{displayName:'admin'},author.cookie,400);
+  await request('/api/account',{displayName:'Name\nInjected'},author.cookie,400);
+  await request(`/api/games/${game}/vote`,{value:1},author.cookie);
+  await request('/api/admin',{action:'user',id:authorId,role:'USER',disabled:true},admin.cookie);
+  assert.equal((await gamesRepo.getGame(game)).score,1);checks++;
+  assert.equal((await gamesRepo.getGame(game)).voteCount,1);checks++;
+  await request('/api/admin',{action:'user',id:authorId,role:'USER',disabled:false},admin.cookie);
+  assert.equal((await gamesRepo.getGame(game)).score,2);checks++;
+  const simultaneous=await Promise.all([1,2].map(()=>fetch(base+`/api/games/${game}/vote`,{method:'POST',headers:{'content-type':'application/json',origin,cookie:admin.cookie},body:JSON.stringify({value:1})})));
+  assert.deepEqual(simultaneous.map(item=>item.status),[200,200]);checks++;
+  assert.equal((await gamesRepo.getGame(game)).score,2);checks++;
+  await query("UPDATE games SET title='Literal %_\\ value' WHERE id=$1",[game]);
+  assert.equal((await gamesRepo.listGames({search:'%_\\'})).total,1);checks++;
+  assert.equal((await gamesRepo.listGames({search:'does-not-match%'})).total,0);checks++;
+  await query("UPDATE games SET coming_soon=TRUE,release_date='Unbekannt' WHERE id=$1",[game]);
+  assert.equal((await gamesRepo.listGames({release:'upcoming'})).total,1);checks++;
+  assert.equal((await gamesRepo.listGames({release:'released'})).total,0);checks++;
+  await request('/api/games/2147483647/admin',{},admin.cookie,404);
+  const renamedAuthor=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  await request('/api/account',{displayName:'RenamedMember'},renamedAuthor.cookie);
+  const renamedComments=await (await fetch(base+`/api/games/${game}/comments`)).json();
+  assert.equal(renamedComments.comments.find(comment=>comment.userId===authorId).username,'RenamedMember');checks++;
+  // Password reset tokens are hashed, expiring, replacing and single-use.
+  await query('DELETE FROM app_auth_limits');
+  const recoveryUser=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  const recoveryId=(await query("SELECT id FROM app_users WHERE username='openuser'")).rows[0].id;
+  await request('/api/admin',{action:'reset',id:recoveryId},recoveryUser.cookie,403);
+  const steamOnly=(await query("INSERT INTO app_users(username,display_name,steam_id) VALUES('steam_resetfixture','Steam Reset Fixture','76561198000000009') RETURNING id")).rows[0].id;
+  await request('/api/admin',{action:'reset',id:steamOnly},admin.cookie,400);
+  const expiredReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const expiredResetToken=new URL(expiredReset.resetUrl).searchParams.get('token');
+  await query("UPDATE app_password_resets SET expires_at=NOW()-INTERVAL '1 second' WHERE token_hash=$1",[createHash('sha256').update(expiredResetToken).digest('hex')]);
+  await request('/api/auth/reset',{token:expiredResetToken,password:'Reset-password-only-1234'},'',400);
+  const firstReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const secondReset=await request('/api/admin',{action:'reset',id:recoveryId},admin.cookie);
+  const firstResetToken=new URL(firstReset.resetUrl).searchParams.get('token'),secondResetToken=new URL(secondReset.resetUrl).searchParams.get('token');
+  assert.equal((await query('SELECT token_hash FROM app_password_resets WHERE token_hash=$1',[secondResetToken])).rowCount,0); checks++;
+  await request('/api/auth/reset',{token:firstResetToken,password:'Reset-password-only-1234'},'',400);
+  await request('/api/auth/reset',{token:secondResetToken,password:'Reset-password-only-1234'});
+  await request('/api/auth/reset',{token:secondResetToken,password:'Other-password-only-1234'},'',400);
+  assert.equal((await query('SELECT 1 FROM app_sessions WHERE user_id=$1',[recoveryId])).rowCount,0);checks++;
+  await request('/api/account',{displayName:'No session'},recoveryUser.cookie,401);
+  await request('/api/auth/login',{username:'openuser',password:'Reset-password-only-1234'});
+  // Data export/deletion and server-generated script nonces.
+  await query('DELETE FROM app_auth_limits');
+  const dataInvite=await request('/api/admin',{action:'invite',days:7},admin.cookie);
+  const dataUser=await request('/api/auth/register',{username:'deleteuser',password:credentials.password,invite:new URL(dataInvite.inviteUrl).searchParams.get('invite')});
+  const dataId=(await query("SELECT id FROM app_users WHERE username='deleteuser'")).rows[0].id;
+  await query('UPDATE games SET created_by=$1 WHERE id=$2',[dataId,game]);
+  await query('INSERT INTO submissions(game_id,user_ref) VALUES($1,$2)',[game,dataId]);
+  await request(`/api/games/${game}/vote`,{value:1},dataUser.cookie);
+  await request(`/api/games/${game}/comments`,{body:'Delete with account'},dataUser.cookie);
+  await query("INSERT INTO legacy_orphans(source_table,legacy_key,reason,data) SELECT 'app_users.names',id::text,'fixture',to_jsonb(u) FROM app_users u WHERE id=$1",[dataId]);
+  await request('/api/admin',{action:'reset',id:dataId},admin.cookie);
+  const exported=await fetch(base+'/api/account/export',{method:'POST',headers:{origin,cookie:dataUser.cookie}});
+  assert.equal(exported.status,200);checks++;
+  assert.ok(exported.headers.get('content-disposition').includes('attachment'));checks++;
+  const data=await exported.json();assert.equal(data.profile.username,'deleteuser');checks++;
+  assert.equal(data.votes.length,1);checks++;assert.equal(data.comments.length,1);checks++;assert.equal(data.submissions.length,1);checks++;
+  assert.equal(JSON.stringify(data).includes('password_hash'),false);checks++;
+  await request('/api/account/export',{},dataUser.cookie,403,'https://evil.test');
+  await request('/api/admin',{action:'delete',id:dataId,username:'deleteuser'},dataUser.cookie,403);
+  await request('/api/account',{username:'other',password:credentials.password},dataUser.cookie,400,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:'deleteuser',password:'incorrect-password'},dataUser.cookie,403,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:credentials.username,password:credentials.password},admin.cookie,400,origin,'198.51.100.9','DELETE');
+  await request('/api/account',{username:'deleteuser',password:credentials.password},dataUser.cookie,200,origin,'198.51.100.9','DELETE');
+  for(const table of ['app_sessions','app_password_resets','votes','comments','submissions']) {
+    const column=table.startsWith('app_')?'user_id':'user_ref';
+    assert.equal((await query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE ${column}=$1`,[dataId])).rows[0].n,0);checks++;
+  }
+  assert.equal((await query('SELECT created_by FROM games WHERE id=$1',[game])).rows[0].created_by,null);checks++;
+  assert.equal((await query("SELECT COUNT(*)::int AS n FROM legacy_orphans WHERE source_table='app_users.names' AND legacy_key=$1",[String(dataId)])).rows[0].n,0);checks++;
+  await request('/api/account',{displayName:'Deleted'},dataUser.cookie,401);
+  await request('/api/admin',{action:'delete',id:1,username:credentials.username},admin.cookie,400);
+  // An admin may remove a Steam-only account without inventing a password.
+  await request('/api/admin',{action:'delete',id:steamOnly,username:'steam_resetfixture'},admin.cookie);
+  assert.equal((await query('SELECT 1 FROM app_users WHERE id=$1',[steamOnly])).rowCount,0);checks++;
+  const document=await fetch(base+'/'),policy=document.headers.get('content-security-policy')||'',html=await document.text();
+  const scriptPolicy=policy.split(';').find(item=>item.trim().startsWith('script-src'))||'';
+  assert.ok(!scriptPolicy.includes('unsafe-inline'));checks++;
+  const nonce=scriptPolicy.match(/'nonce-([^']+)'/)?.[1];assert.ok(nonce);checks++;
+  const scripts=[...html.matchAll(/<script\b[^>]*>/g)].map(match=>match[0]);assert.ok(scripts.length);checks++;
+  assert.ok(scripts.every(script=>script.includes(`nonce="${nonce}"`)));checks++;
+  const secondPolicy=(await fetch(base+'/')).headers.get('content-security-policy');assert.notEqual(secondPolicy,policy);checks++;
+  await request('/api/games',{steamUrl:'9999999999'},admin.cookie,400);
+  await request('/api/games/2147483647/vote',{value:1},admin.cookie,404);
+  // Login failures from one client must not lock out another client.
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<10; i++) await request('/api/auth/login', {username: credentials.username, password:'wrong'}, '', 401, origin, '198.51.100.1');
+  await request('/api/auth/login', credentials, '', 200, origin, '198.51.100.2');
+  // Rightmost proxy address wins; a forged left entry cannot change the bucket.
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<10; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401, origin, '203.0.113.'+(i+1)+', 198.51.100.3');
+  await request('/api/auth/login', credentials, '', 429, origin, '203.0.113.99, 198.51.100.3');
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<9; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401);
+  await request('/api/auth/login', credentials);
+  assert.equal((await query('SELECT COUNT(*)::int AS n FROM app_auth_limits')).rows[0].n,0); checks++;
+  await query('DELETE FROM app_auth_limits');
+  for (let i=0; i<50; i++) await request('/api/auth/login', {username:credentials.username,password:'wrong'}, '', 401, origin, '192.0.2.'+(i+1));
+  await request('/api/auth/login', credentials, '', 429, origin, '192.0.2.100');
   console.log(`Passed ${checks} integration checks against a disposable PostgreSQL database.`);
-} finally { await pool.end(); }
+} finally { await pool.end(); await gamesRepo.db.end(); }
+
+});

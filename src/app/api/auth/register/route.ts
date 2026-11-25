@@ -1,3 +1,4 @@
+import { rateLimited } from '@/lib/errors';
 import { z } from 'zod';
 import { authLimit, createLocalUser } from '@/lib/accounts';
 import { sameOrigin, authError, clientKey, sessionResponse } from '@/lib/auth-http';
@@ -5,7 +6,7 @@ const schema = z.object({ username: z.string().regex(/^[a-zA-Z0-9_]{3,32}$/).ref
 export async function POST(request: Request) {
   try {
     sameOrigin(request);
-    if (!await authLimit('register', clientKey(request), 10)) throw new Error('RATE_LIMIT');
+    if (!await authLimit('register', clientKey(request), 10)) throw rateLimited();
     const user = await createLocalUser(schema.parse(await request.json()));
     return sessionResponse(user.id);
   } catch (error) { return authError(error); }

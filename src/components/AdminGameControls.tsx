@@ -41,6 +41,12 @@ export function AdminGameControls({
     }
   }
 
+  async function refreshSteam() {
+    setBusy(true);setNotice('');
+    try {const response=await fetch(`/api/games/${gameId}/admin`,{method:'POST'});const payload=await response.json();if(!response.ok)throw new Error(payload.error);window.location.reload();}
+    catch(error){setNotice(error instanceof Error?error.message:'Aktualisierung fehlgeschlagen.');setBusy(false);}
+  }
+
   return (
     <section className="admin-controls">
       <header><Settings2 /><strong>Verwaltung</strong></header>
@@ -58,6 +64,7 @@ export function AdminGameControls({
         <button className="button button-primary" disabled={busy} onClick={save} type="button">
           {busy ? <LoaderCircle className="spin" /> : <Save />} Speichern
         </button>
+        <button type="button" className="button button-secondary" disabled={busy} onClick={refreshSteam}>Daten von Steam aktualisieren</button>
         <GameDeleteButton gameId={gameId} redirectTo="/" title={title} />
       </div>
       {notice ? <small className="admin-notice">{notice}</small> : null}

@@ -1,3 +1,4 @@
+import { validation } from '@/lib/app-error';
 import sharp from 'sharp';
 export const MAX_ICON_BYTES = 512 * 1024;
 export const ICON_ERROR = 'Bitte ein gültiges PNG, JPEG oder WebP mit maximal 512 KB und 16 Megapixeln auswählen.';
@@ -14,20 +15,20 @@ export async function normalizeSiteIcon(base64: string): Promise<Buffer> {
     const metadata = await image.metadata();
     if (!['png','jpeg','webp'].includes(metadata.format || '') || (metadata.pages || 1) > 1) throw new Error();
     return await image.rotate().resize(512,512,{ fit:'contain', background:{r:0,g:0,b:0,alpha:0} }).ensureAlpha().png({ compressionLevel:9 }).toBuffer();
-  } catch { throw new Error(ICON_ERROR); }
+  } catch { throw validation(ICON_ERROR); }
 }
 export async function boundedJson(request: Request): Promise<unknown> {
   const limit = 768 * 1024;
-  if (Number(request.headers.get('content-length')) > limit) throw new Error(ICON_ERROR);
+  if (Number(request.headers.get('content-length')) > limit) throw validation(ICON_ERROR);
   const reader = request.body?.getReader();
-  if (!reader) throw new Error('Invalid body');
+  if (!reader) throw validation();
   const parts: Uint8Array[] = []; let length = 0;
   try {
     while (true) {
       const {done,value} = await reader.read();
       if (done) break;
       length += value.byteLength;
-      if (length > limit) { await reader.cancel(); throw new Error(ICON_ERROR); }
+      if (length > limit) { await reader.cancel(); throw validation(ICON_ERROR); }
       parts.push(value);
     }
     return JSON.parse(Buffer.concat(parts).toString('utf8'));

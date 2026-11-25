@@ -1,6 +1,8 @@
 'use client';
+import { useRouter } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 export function AccountForm({ name, local }: { name: string; local: boolean }) {
+  const router=useRouter();
   const [notice, setNotice] = useState(''), [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setNotice('');
@@ -9,8 +11,8 @@ export function AccountForm({ name, local }: { name: string; local: boolean }) {
       const response = await fetch('/api/account', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ displayName: form.get('displayName'), ...(form.get('password') ? { password: form.get('password'), currentPassword: form.get('currentPassword') } : {}) }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error);
-      if (result.passwordChanged) window.location.href = '/login';
-      else { setNotice('Profil gespeichert.'); window.location.reload(); }
+      if (result.passwordChanged) { router.replace('/login');router.refresh(); }
+      else { setNotice('Profil gespeichert.'); router.refresh(); }
     } catch (error) { setNotice(error instanceof Error ? error.message : 'Fehler.'); }
     finally { setBusy(false); }
   }

@@ -6,3 +6,6 @@ node_modules
 *.log
 *.tsbuildinfo
 docs/screenshots
+
+*.dump
+backups/

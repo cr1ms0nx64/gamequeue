@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.3.0
+
+- Fehlgeschlagene Anmeldungen pro Benutzer und vertrauenswürdiger Client-IP begrenzen; Proxy-Warnung und konfigurierbare Hop-Anzahl.
+- Einheitliche öffentliche Fehler ohne Datenbankdetails; begrenzte Steam-IDs.
+- Einmalige Admin-Reset-Links, Notfallskript und Sitzungswiderruf.
+- Datenbankbasierte Community-Limits, Kommentar-Moderation und Cursor-Paginierung; transaktionale Votes.
+- Gesperrte Nutzer aus Bewertungen ausblenden; eindeutige Anzeigenamen und deterministische Steam-Metadaten.
+- Versionierte Migrationen von 1.2.0 mit archivierten Alt-Datensätzen und echten Nutzer-Fremdschlüsseln.
+- Persönlicher JSON-Export und Kontolöschung mit Schutz des letzten aktiven Admins.
+- CSP-Nonces, HTTPS-HSTS, Docker-Healthchecks und Backup-Anleitung.
+- ESLint, Audit, node:test-Integration, Upgrade- und Docker-Build-Prüfungen; feste Action-SHAs und Dependabot.
+
+
 ## 1.2.0
 
 * Renamed the application and repository to GameQueue with neutral default artwork.

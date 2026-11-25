@@ -45,6 +45,8 @@ export type GameDetail = GameSummary & {
 };
 
 export type GameComment = {
+  userId: number;
+  cursor: string;
   id: number;
   username: string;
   body: string;

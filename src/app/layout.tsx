@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Footer } from '@/components/Footer';
 import { Header } from '@/components/Header';
 import './globals.css';
-import './platform-shell-v2.css';
+
 
 export const dynamic = 'force-dynamic';
 
