@@ -211,3 +211,33 @@ docker compose exec app node scripts/reset-admin.mjs benutzername
 ## Steam-Metadaten aktualisieren
 
 Admins können Daten auf der Spielseite erneut von Steam laden. Status, Bewertungen und Vorschläge bleiben dabei erhalten. Für Cron steht `npm run refresh-steam` zur Verfügung. Alle Spiele werden nacheinander aktualisiert; zwischen Anfragen liegen standardmäßig 1500 ms (`STEAM_REFRESH_DELAY_MS`, mindestens 1000). Der Webserver startet keinen Hintergrundprozess. Für dieses Skript gilt ebenfalls Node.js 24 und eine gesetzte `DATABASE_URL`.
+
+## Upgrade von 1.2.0 und Migrationen
+
+Vor dem Upgrade die App stoppen und die Datenbank sichern. Die alte App darf während der Schemaumstellung nicht weiterlaufen. Beispiel für das Compose-Setup:
+
+```sh
+docker compose stop app
+docker compose exec -T db pg_dump -U games -d games -Fc > gamequeue-before-1.3.dump
+# Anschließend den neuen Quellstand auschecken.
+docker compose build app
+docker compose up -d app
+docker compose logs app
+```
+
+Der Start führt Migrationen vor `server.js` aus. Jede SQL-Datei hat eine gespeicherte SHA-256-Prüfsumme, läuft unter einer Datenbanksperre und in einer eigenen Transaktion. Geänderte bereits angewendete Migrationen brechen den Start ab. SQL-Dateien nach der Anwendung nicht bearbeiten. Bei manueller Installation: `npm ci`, `npm run migrate`, `npm run build`, `npm start`. `npm run dev` migriert ebenfalls vor dem Start.
+
+| Migration | Wirkung |
+| --- | --- |
+| 0001 | Baseline des Schemas 1.2.0, auch auf bestehenden Tabellen anwendbar |
+| 0002 | `local:N` wird mit vorhandenen Konten verknüpft; Fremdschlüssel ersetzen Text-IDs und Namenskopien |
+| 0003 | Passwort-Reset, `coming_soon` und eindeutige Anzeigenamen |
+
+Nicht zuordenbare Votes, Kommentare und Vorschläge werden vollständig als JSON in `legacy_orphans` archiviert. Spiele bleiben erhalten, unbekannte Ersteller werden `NULL`. Doppelte Alt-Referenzen werden ebenfalls archiviert; die kanonische Referenz bleibt aktiv. Bei kollidierenden oder ungültigen Anzeigenamen wird das alte Profil archiviert und ein eindeutiger Ersatzname vergeben. Benutzernamen, Passwörter und Anmeldungen bleiben erhalten. Das Migrationslog nennt die Anzahl archivierter Einträge.
+
+```sql
+SELECT source_table, reason, COUNT(*) FROM legacy_orphans GROUP BY source_table, reason;
+SELECT id, source_table, legacy_key, data FROM legacy_orphans ORDER BY id;
+```
+
+Die archivierten Daten enthalten personenbezogene Informationen und gegebenenfalls Passwort-Hashes alter Profile. Nicht öffentlich weitergeben. Eine Zuordnung ehemaliger Hub-IDs wird bewusst nicht geraten. Der Upgrade-Test (`npm run test:upgrade`) erstellt ausschließlich bei `TEST_DATABASE_DISPOSABLE=1` eine eigene temporäre Datenbank und prüft Erhalt, Archivierung, erneuten Start und Prüfsummenfehler.

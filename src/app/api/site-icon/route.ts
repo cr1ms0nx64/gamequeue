@@ -1,12 +1,10 @@
 import { toResponse } from '@/lib/errors';
 import { NextResponse } from 'next/server';
-import { ensureAccounts } from '@/lib/accounts';
 import { db } from '@/lib/db';
 import { publicOrigin } from '@/lib/origins';
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
   try {
-  await ensureAccounts();
   const row = (await db.query('SELECT site_icon,site_icon_hash FROM app_settings WHERE id=TRUE')).rows[0];
   if (!row.site_icon) {
     const response = NextResponse.redirect(`${publicOrigin()}/icon.png`);

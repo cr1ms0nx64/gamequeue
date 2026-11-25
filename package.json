@@ -3,17 +3,19 @@
   "version": "1.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run migrate && next dev",
     "build": "next build && node scripts/prepare-standalone.mjs",
-    "start": "node --env-file-if-exists=.env.local .next/standalone/server.js",
-    "seed": "node --env-file-if-exists=.env.local scripts/seed.mjs",
+    "start": "node --env-file-if-exists=.env.local --import ./scripts/register-paths.mjs scripts/start.mjs",
+    "seed": "node --env-file-if-exists=.env.local --import ./scripts/register-paths.mjs scripts/seed.mjs",
     "quality": "npm run typecheck && npm run build",
     "typecheck": "tsc --noEmit",
     "setup:env": "node scripts/setup-env.mjs",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node --import ./scripts/register-paths.mjs tests/integration.mjs",
     "reset-admin": "node --env-file-if-exists=.env.local scripts/reset-admin.mjs",
-    "refresh-steam": "node --env-file-if-exists=.env.local --import ./scripts/register-paths.mjs scripts/refresh-steam.mjs"
+    "refresh-steam": "node --env-file-if-exists=.env.local --import ./scripts/register-paths.mjs scripts/refresh-steam.mjs",
+    "migrate": "node --env-file-if-exists=.env.local --import ./scripts/register-paths.mjs scripts/migrate.mjs",
+    "test:upgrade": "node --import ./scripts/register-paths.mjs --test tests/upgrade.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

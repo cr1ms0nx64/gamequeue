@@ -100,11 +100,11 @@ try {
   const races = await Promise.all(['raceone','racetwo'].map(username => fetch(base + '/api/auth/register', { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ username, password: credentials.password, invite: raceToken }) })));
   assert.deepEqual(races.map(response => response.status).sort(), [200,400]); checks++;
   // Existing community features use the standalone identity namespace.
-  const game = (await query("INSERT INTO games(steam_app_id,slug,title,header_image,created_by_user_id) VALUES(620,'integration-portal','Portal 2','https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/620/header.jpg','fixture') RETURNING id")).rows[0].id;
+  const game = (await query("INSERT INTO games(steam_app_id,slug,title,header_image,created_by) VALUES(620,'integration-portal','Portal 2','https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/620/header.jpg',1) RETURNING id")).rows[0].id;
   const vote = await request(`/api/games/${game}/vote`, { value: 1 }, admin.cookie);
   assert.equal(vote.score ?? vote.vote?.score, 1); checks++;
   await request(`/api/games/${game}/comments`, { body: 'Standalone community comment' }, admin.cookie);
-  assert.equal((await query('SELECT user_id FROM votes WHERE game_id=$1',[game])).rows[0].user_id, 'local:1'); checks++;
+  assert.equal((await query('SELECT user_ref FROM votes WHERE game_id=$1',[game])).rows[0].user_ref, 1); checks++;
   const foreignVote = await fetch(base + `/api/games/${game}/vote`, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.test', cookie: admin.cookie }, body: JSON.stringify({ value: 1 }) });
   assert.notEqual(foreignVote.status, 200); checks++;
   // Steam start uses the provider and stores browser-bound state, while forged callbacks fail.
@@ -125,7 +125,7 @@ try {
   await request(`/api/games/${game}/comments/${own.comment.id}`,{},admin.cookie,200,origin,'198.51.100.9','DELETE');
   const another=await request(`/api/games/${game}/comments`,{body:'Author deletes own'},author.cookie);
   await request(`/api/games/${game}/comments/${another.comment.id}`,{},author.cookie,200,origin,'198.51.100.9','DELETE');
-  await query("INSERT INTO comments(game_id,user_id,username,body,created_at) SELECT $1,'local:'||$2::text,'Fixture','Page '||n,'2020-01-01T00:00:00.000123Z'::timestamptz FROM generate_series(1,30) n",[game,authorId]);
+  await query("INSERT INTO comments(game_id,user_ref,body,created_at) SELECT $1,$2,'Page '||n,'2020-01-01T00:00:00.000123Z'::timestamptz FROM generate_series(1,30) n",[game,authorId]);
   let page=await (await fetch(base+`/api/games/${game}/comments`)).json();const ids=page.comments.map(item=>item.id);
   assert.equal(ids.length,25);checks++;
   page=await (await fetch(base+`/api/games/${game}/comments?cursor=${encodeURIComponent(page.nextCursor)}`)).json();
@@ -150,6 +150,10 @@ try {
   assert.equal((await gamesRepo.listGames({release:'upcoming'})).total,1);checks++;
   assert.equal((await gamesRepo.listGames({release:'released'})).total,0);checks++;
   await request('/api/games/2147483647/admin',{},admin.cookie,404);
+  const renamedAuthor=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});
+  await request('/api/account',{displayName:'RenamedMember'},renamedAuthor.cookie);
+  const renamedComments=await (await fetch(base+`/api/games/${game}/comments`)).json();
+  assert.equal(renamedComments.comments.find(comment=>comment.userId===authorId).username,'RenamedMember');checks++;
   // Password reset tokens are hashed, expiring, replacing and single-use.
   await query('DELETE FROM app_auth_limits');
   const recoveryUser=await request('/api/auth/login',{username:'openuser',password:'new-password-123456'});

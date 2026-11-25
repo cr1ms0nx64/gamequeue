@@ -10,15 +10,15 @@ The initial administrator requires SETUP_TOKEN and is created under a PostgreSQL
 
 Steam authentication verifies the assertion with the fixed HTTPS Steam endpoint, checks the signed identity and callback, requires a browser-bound one-time state and rejects expired/replayed nonces. New Steam accounts follow the same registration policy as local accounts. Existing Steam accounts can still sign in when registration is closed. Steam IDs never automatically link to local accounts with matching names. Local names starting with steam_ are reserved. Steam passwords are never entered into this application.
 
-Authenticated JSON mutation endpoints verify the request Origin against PUBLIC_ORIGIN. Login, registration, setup and administration use database-backed rate limits. Games interaction limits remain process-local.
+Authenticated JSON mutation endpoints verify the request Origin against PUBLIC_ORIGIN. Login, registration, setup and administration use database-backed rate limits. Game interactions use the same database-backed limits, keyed by authenticated user ID.
 
 ## Deployment
 
 Use a dedicated database and database account. PUBLIC_ORIGIN must exactly match the external origin. Use HTTPS outside localhost. TRUST_PROXY defaults to false, sharing an IP rate-limit bucket between clients. Enable it only when the reverse proxy overwrites X-Forwarded-For and direct access to the app is blocked. The supplied Compose app port binds to loopback.
 
-Never publish .env.local, production databases, session tokens or invite URLs. Standalone game participation IDs use a local: prefix. Existing games participation must be deliberately mapped to retain ownership.
+Never publish .env.local, production databases, session tokens or invite URLs. Game participation uses foreign keys to app_users. During upgrades, local:N identities are mapped only when the account exists. Unmapped records and duplicate aliases are archived in legacy_orphans instead of being discarded.
 
-No password recovery email or local MFA is implemented. Maintain access to an administrator account. Steam-only accounts authenticate through Steam and cannot set a local password through the profile page.
+Admins can issue hashed single-use password reset links; an emergency database-access script supports local admins. Recovery email and local MFA are not implemented. Steam-only accounts authenticate through Steam and cannot set a local password through the profile page.
 
 ## Site identity settings
 
